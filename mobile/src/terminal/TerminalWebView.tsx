@@ -223,14 +223,17 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   const handleReload = useCallback(() => {
     // Why: web-ready is deduped per document, so a reload that skips onLoadStart
     // must still reset the readiness refs and re-arm the watchdog or the pane
-    // stays blank with no overlay.
+    // stays blank with no overlay. Stale queued commands belong to the dead
+    // document, so clear them here too — handleLoadStart may never run.
     isWebReadyRef.current = false
     webReadyNotifiedRef.current = false
     pendingPingIdRef.current = null
     armWebReadyWatchdog()
+    pendingMessages.clear()
+    writeCoalescer.clear()
     clearEngineError()
     webViewRef.current?.reload()
-  }, [armWebReadyWatchdog, clearEngineError, webReadyNotifiedRef])
+  }, [armWebReadyWatchdog, clearEngineError, pendingMessages, webReadyNotifiedRef, writeCoalescer])
 
   const handleContentProcessDidTerminate = useCallback(() => {
     // Why: WKWebView content-process loss is recoverable; stale commands belong
