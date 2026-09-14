@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import {
   StyleSheet,
   View,
@@ -31,10 +31,9 @@ export function WindowBoundsProvider({
     },
     [onLayout]
   )
-  const value = useMemo(() => measured, [measured])
 
   return (
-    <WindowBoundsContext.Provider value={value}>
+    <WindowBoundsContext.Provider value={measured}>
       <View style={[styles.root, style]} onLayout={handleLayout}>
         {children}
       </View>
