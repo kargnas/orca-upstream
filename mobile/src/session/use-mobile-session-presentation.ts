@@ -21,6 +21,7 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
     creatingBrowser,
     creatingMarkdown,
     keyboardHeight,
+    terminalKeyboardResizeEnabled,
     terminalKeyboardMetrics,
     toastOpacityRef,
     hostEndpoint,
@@ -28,6 +29,7 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
     terminalFrameRef,
     handleCreateTerminal,
     visibleTabs,
+    showNativeChat,
     forceReconnectHost
   } = scope
   const showLoadingState = connState === 'connected' && !terminalsLoaded && visibleTabs.length === 0
@@ -81,14 +83,22 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
         ? Math.max(0, keyboardHeight - insets.bottom)
         : keyboardHeight
       : 0
-  const activeTerminalKeyboardLift = computeActiveTerminalKeyboardLift({
-    keyboardLift,
-    metrics: activeHandle ? terminalKeyboardMetrics.get(activeHandle) : undefined,
-    terminalFrameHeight: terminalFrameRef.current?.height ?? 0
-  })
+  const activeTerminalKeyboardLift = terminalKeyboardResizeEnabled
+    ? 0
+    : computeActiveTerminalKeyboardLift({
+        keyboardLift,
+        metrics: activeHandle ? terminalKeyboardMetrics.get(activeHandle) : undefined,
+        terminalFrameHeight: terminalFrameRef?.current?.height ?? 0
+      })
   const toastAnimatedStyle = {
     opacity: toastOpacityRef.current,
     transform: [{ translateY: -keyboardLift }]
+  }
+  // Why: with keyboard resize the dock's padding already lifts the terminal frame's bottom above the IME; native chat hides that dock.
+  const terminalToastLift = terminalKeyboardResizeEnabled && !showNativeChat ? 0 : keyboardLift
+  const terminalToastAnimatedStyle = {
+    opacity: toastOpacityRef.current,
+    transform: [{ translateY: -terminalToastLift }]
   }
   return {
     showLoadingState,
@@ -98,7 +108,8 @@ export function useMobileSessionPresentation(scope: MobileSessionBulkCloseModel)
     terminalSummary,
     keyboardLift,
     activeTerminalKeyboardLift,
-    toastAnimatedStyle
+    toastAnimatedStyle,
+    terminalToastAnimatedStyle
   }
 }
 
