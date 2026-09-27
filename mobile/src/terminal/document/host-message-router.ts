@@ -53,7 +53,7 @@ export function handleMsg(scope: TerminalDocumentScope, msg: TerminalHostMessage
     }
   }
   if (msg.type === 'ping') {
-    notify(scope, { type: 'pong', pingId: msg.id })
+    notify(scope, { type: 'pong', pingId: msg.id, terminalAvailable: scope.hasEngine() })
   } else if (msg.type === 'init') {
     holdHostFrame(scope, msg)
     init(

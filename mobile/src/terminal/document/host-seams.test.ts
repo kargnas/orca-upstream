@@ -264,7 +264,7 @@ describe('the document host seams, once the page sets them', () => {
     expect(terminal.unicode.activeVersion).toBe('11')
     // The other direction: a document-side report reaches the page's sink, not the bridge.
     handleMsg(scope, { type: 'ping', id: 3 })
-    expect(posted).toContainEqual({ type: 'pong', pingId: 3 })
+    expect(posted).toContainEqual({ type: 'pong', pingId: 3, terminalAvailable: true })
   })
 
   it('leaves window.onerror alone when the host installs the reporter its own way', () => {
