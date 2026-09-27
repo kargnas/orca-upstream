@@ -174,6 +174,10 @@ describe('applyTerminalAppearance mode-2031 color-scheme reports', () => {
     apply({}, false)
     expect(replies).toEqual([LIGHT])
     expect(resize).not.toHaveBeenCalled()
+    // Once this desktop owns the grid again, the next appearance pass must not repeat the flip.
+    setFitOverride(PTY_ID, 'desktop-fit', 80, 24)
+    apply({ terminalFontSize: 20 }, false)
+    expect(replies).toEqual([LIGHT])
   })
 
   it('keeps unrelated appearance changes silent and later palette reports working', async () => {

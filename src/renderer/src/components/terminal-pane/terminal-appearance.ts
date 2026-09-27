@@ -170,14 +170,15 @@ export function applyTerminalAppearance(
   for (const pane of manager.getPanes()) {
     const transport = paneTransports.get(pane.id)
     const appearancePtyId = transport?.getPtyId()
+    const fitOverride = appearancePtyId ? getFitOverrideForPty(appearancePtyId) : null
+    const connected = transport !== undefined && transport.isConnected()
     // Why: PTY is already at phone dimensions under a mobile-fit override — don't resize it back to desktop.
-    const desktopSizesPty =
-      transport !== undefined &&
-      transport.isConnected() &&
-      (!appearancePtyId || !getFitOverrideForPty(appearancePtyId))
+    const desktopSizesPty = connected && !fitOverride
+    // Why mobile-fit only: a phone answers for itself; a parked desktop that skipped this would repeat the flip later.
+    const reportsColorScheme = connected && fitOverride?.mode !== 'mobile-fit'
     // Why before the theme write: that write makes xterm report too, so it is muted only when this report went out.
     const reportedFlip =
-      desktopSizesPty &&
+      reportsColorScheme &&
       maybePushMode2031Flip(pane.id, appearance.mode, transport, paneMode2031, paneLastThemeMode)
     // Why value-gated: writing options.theme rebuilds the palette, discarding TUI OSC 4/10/11/12 mutations; skip on no-op change.
     if (theme && !composedTerminalThemesEqual(pane.terminal.options.theme, theme)) {
