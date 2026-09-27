@@ -1,6 +1,9 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { ActionSheetModal } from '../components/ActionSheetModal'
+import { PickerModal } from '../components/PickerModal'
+import { terminalAppearanceI18n } from '../i18n/terminal-appearance'
 import { MobileSessionHeaderMoreActionsSheet } from './MobileSessionHeaderMoreActionsSheet'
 
 const state = vi.hoisted(() => ({
@@ -23,6 +26,10 @@ vi.mock('../storage/terminal-theme-preference', () => ({
 }))
 
 let renderer: ReactTestRenderer
+// Labels follow the device locale; pin English so assertions hold on any machine.
+beforeAll(async () => {
+  await terminalAppearanceI18n.changeLanguage('en')
+})
 afterEach(() => {
   act(() => renderer?.unmount())
   vi.clearAllMocks()
@@ -41,10 +48,10 @@ async function openAppearancePicker() {
       })
     )
   })
-  const action = renderer.root.findByType('ActionSheetModal').props.actions[0]
+  const action = renderer.root.findByType(ActionSheetModal).props.actions[0]
   expect(action).toMatchObject({ label: 'Terminal appearance', closeBeforePress: true })
   act(() => action.onPress())
-  return renderer.root.findByType('PickerModal')
+  return renderer.root.findByType(PickerModal)
 }
 
 describe('mobile terminal appearance menu', () => {

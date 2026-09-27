@@ -13,20 +13,25 @@ const source = ts.createSourceFile(
 )
 let callback: string | undefined
 function visit(node: ts.Node): void {
-  if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'onNavigatorLayout') {
-    callback = (node.initializer as ts.CallExpression).arguments[0].getText(source)
+  if (
+    ts.isVariableDeclaration(node) &&
+    node.name.getText(source) === 'onNavigatorLayout' &&
+    node.initializer &&
+    ts.isCallExpression(node.initializer)
+  ) {
+    callback = node.initializer.arguments[0].getText(source)
   }
   ts.forEachChild(node, visit)
 }
 visit(source)
 
-function startup(load: () => Promise<unknown>, hide: () => Promise<void>) {
+function startup(load: () => Promise<unknown>, hide: () => Promise<void>): () => Promise<void> {
   if (!callback) {
     throw new Error('Root layout must coordinate the native splash')
   }
   return new Function('loadMobileTerminalThemeMode', 'SplashScreen', `return (${callback})`)(load, {
     hideAsync: hide
-  }) as () => Promise<void>
+  })
 }
 
 describe('terminal appearance before native splash dismissal', () => {

@@ -1,13 +1,23 @@
 import { createElement, Fragment, type ComponentProps } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { DEFAULT_TERMINAL_THEMES } from '../../../src/shared/terminal-themes/defaults'
 import { TerminalPaneView } from '../session/TerminalPaneView'
+import type { MobileTerminalThemeMode } from '../storage/terminal-theme-preference'
+import { TerminalWebView } from './TerminalWebView'
 import type { MobileTerminalTheme } from './terminal-webview-contract'
 
-const state = vi.hoisted(() => ({
-  scheme: 'dark' as 'dark' | 'light' | null,
-  mode: 'system' as 'system' | 'dark' | 'light' | 'desktop',
+type ThemeTestState = {
+  scheme: 'dark' | 'light' | null
+  mode: MobileTerminalThemeMode
+  schemeListeners: Set<() => void>
+  modeListeners: Set<() => void>
+  load: Mock
+}
+
+const state = vi.hoisted((): ThemeTestState => ({
+  scheme: 'dark',
+  mode: 'system',
   schemeListeners: new Set<() => void>(),
   modeListeners: new Set<() => void>(),
   load: vi.fn()
@@ -92,7 +102,7 @@ describe('mobile terminal appearance on an existing pane', () => {
   }
 
   function terminal() {
-    return renderer!.root.findByType('TerminalWebView')
+    return renderer!.root.findByType(TerminalWebView)
   }
 
   function setScheme(scheme: typeof state.scheme): void {
@@ -159,12 +169,12 @@ describe('mobile terminal appearance on an existing pane', () => {
         )
       )
     })
-    const panes = renderer!.root.findAllByType('TerminalWebView')
+    const panes = renderer!.root.findAllByType(TerminalWebView)
     setScheme('light')
     expect(panes.map((pane) => pane.props.terminalTheme.mode)).toEqual(['light', 'light'])
     setMode('dark')
     expect(panes.map((pane) => pane.props.terminalTheme.mode)).toEqual(['dark', 'dark'])
-    expect(renderer!.root.findAllByType('TerminalWebView')).toEqual(panes)
+    expect(renderer!.root.findAllByType(TerminalWebView)).toEqual(panes)
   })
 
   it('passes through the current host theme only in desktop mode', async () => {
