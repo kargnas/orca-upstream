@@ -45,6 +45,7 @@ export function TerminalKeyboardResizeSetting(): React.JSX.Element {
             <Text style={styles.rowSublabel}>{enabled ? 'On' : 'Off'}</Text>
           </View>
           <Switch
+            accessibilityLabel="Resize terminal for keyboard"
             value={enabled}
             onValueChange={toggle}
             trackColor={{ false: colors.bgRaised, true: colors.textSecondary }}
