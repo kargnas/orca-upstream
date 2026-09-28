@@ -31,6 +31,12 @@ class OrcaTerminalKeyCaptureView(context: Context, appContext: AppContext) :
           onTerminalKey(chord.toPayload())
           return true
         }
+        // Why: releasing the modifier while still holding the key makes Android send repeat
+        // ACTION_DOWNs the chord no longer matches; the field would see a key-down whose key-up
+        // is consumed below. Chord repeats still reach readChord first and resend normally.
+        if (event.repeatCount > 0 && event.keyCode in takenKeyCodes) {
+          return true
+        }
       }
       KeyEvent.ACTION_UP -> if (takenKeyCodes.remove(event.keyCode)) return true
     }
