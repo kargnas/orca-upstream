@@ -27,7 +27,11 @@ export function TerminalKeyboardResizeSetting(): React.JSX.Element {
   const toggle = useCallback((next: boolean) => {
     userToggledRef.current = true
     setEnabled(next)
-    void saveTerminalKeyboardResizeEnabled(next)
+    void saveTerminalKeyboardResizeEnabled(next).catch(() => {
+      // Why: a refused write must not leave the switch claiming a value the session will not
+      // load on return; the read-back lands the switch on what storage actually kept.
+      void loadTerminalKeyboardResizeEnabled().then(setEnabled)
+    })
   }, [])
 
   return (
