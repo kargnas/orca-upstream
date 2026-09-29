@@ -3,7 +3,6 @@ package expo.modules.orcaterminalkeycapture
 import android.content.Context
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
-import android.view.View
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -24,33 +23,38 @@ class OrcaTerminalKeyCaptureView(context: Context, appContext: AppContext) :
   override fun dispatchKeyEvent(event: KeyEvent): Boolean {
     when (event.action) {
       KeyEvent.ACTION_DOWN -> {
+        // Why: a press still open when this view lost focus may have sent its key-up to the view
+        // that took it; the next fresh down on this device retires that leftover record.
+        if (event.repeatCount == 0) {
+          dispatchTracker.onKeyDown(event.keyCode, event.deviceId)
+        }
         val chord = readChord(event)
         if (chord != null) {
-          dispatchTracker.onChordTaken(event.keyCode)
+          dispatchTracker.onChordTaken(event.keyCode, event.deviceId)
           onTerminalKey(chord.toPayload())
           return true
         }
         // Why: releasing the modifier while still holding the key makes Android send repeat
         // ACTION_DOWNs the chord no longer matches; the field would see a key-down whose key-up
         // is consumed below. Chord repeats still reach readChord first and resend normally.
-        if (dispatchTracker.shouldConsumeRepeat(event.keyCode, event.repeatCount)) {
+        if (dispatchTracker.shouldConsumeRepeat(
+            event.keyCode,
+            event.deviceId,
+            event.repeatCount
+          )
+        ) {
           return true
         }
       }
-      KeyEvent.ACTION_UP -> if (dispatchTracker.onKeyUp(event.keyCode)) return true
+      KeyEvent.ACTION_UP -> if (dispatchTracker.onKeyUp(event.keyCode, event.deviceId)) return true
     }
     return super.dispatchKeyEvent(event)
   }
 
-  override fun clearChildFocus(child: View?) {
-    super.clearChildFocus(child)
-    // A down taken for the field's old focus never gets its key-up dispatched here.
-    dispatchTracker.onFocusLoss()
-  }
-
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
-    dispatchTracker.onFocusLoss()
+    // A down taken for a view that is leaving never gets its key-up dispatched here.
+    dispatchTracker.onReset()
   }
 
   private fun readChord(event: KeyEvent): TerminalKeyChord? {
