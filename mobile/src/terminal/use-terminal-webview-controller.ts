@@ -177,7 +177,9 @@ export function useTerminalWebViewController(
         msg.pingId === pendingPingIdRef.current
       ) {
         // Why: a pong announces only a document whose web-ready was dropped; a foreground-recovery
-        // pong must not re-announce a document the parent already subscribed to.
+        // pong must not re-announce a document the parent already subscribed to. Its cell box is
+        // what sizes that recovered subscribe's viewport.
+        cellBoxRef.current = readTerminalCellBox(msg)
         confirmWebReady(!webReadyNotifiedRef.current)
       } else if (msg.type === 'ready') {
         // Why: the document's init() rAF chain has run — term is open, renderService is
