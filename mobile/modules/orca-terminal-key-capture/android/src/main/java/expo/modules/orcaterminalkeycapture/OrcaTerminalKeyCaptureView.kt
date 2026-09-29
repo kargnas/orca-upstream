@@ -3,6 +3,7 @@ package expo.modules.orcaterminalkeycapture
 import android.content.Context
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.View
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -18,29 +19,38 @@ class OrcaTerminalKeyCaptureView(context: Context, appContext: AppContext) :
   ExpoView(context, appContext) {
   private val onTerminalKey by EventDispatcher<Map<String, Any>>()
 
-  // Why: a taken chord's key-up must not reach the field either; ReactEditText hides the keyboard
-  // on Enter's key-up, and a hardware Escape key-up would fall back to Back.
-  private val takenKeyCodes = mutableSetOf<Int>()
+  private val dispatchTracker = TerminalKeyDispatchTracker()
 
   override fun dispatchKeyEvent(event: KeyEvent): Boolean {
     when (event.action) {
       KeyEvent.ACTION_DOWN -> {
         val chord = readChord(event)
         if (chord != null) {
-          takenKeyCodes.add(event.keyCode)
+          dispatchTracker.onChordTaken(event.keyCode)
           onTerminalKey(chord.toPayload())
           return true
         }
         // Why: releasing the modifier while still holding the key makes Android send repeat
         // ACTION_DOWNs the chord no longer matches; the field would see a key-down whose key-up
         // is consumed below. Chord repeats still reach readChord first and resend normally.
-        if (event.repeatCount > 0 && event.keyCode in takenKeyCodes) {
+        if (dispatchTracker.shouldConsumeRepeat(event.keyCode, event.repeatCount)) {
           return true
         }
       }
-      KeyEvent.ACTION_UP -> if (takenKeyCodes.remove(event.keyCode)) return true
+      KeyEvent.ACTION_UP -> if (dispatchTracker.onKeyUp(event.keyCode)) return true
     }
     return super.dispatchKeyEvent(event)
+  }
+
+  override fun clearChildFocus(child: View?) {
+    super.clearChildFocus(child)
+    // A down taken for the field's old focus never gets its key-up dispatched here.
+    dispatchTracker.onFocusLoss()
+  }
+
+  override fun onDetachedFromWindow() {
+    super.onDetachedFromWindow()
+    dispatchTracker.onFocusLoss()
   }
 
   private fun readChord(event: KeyEvent): TerminalKeyChord? {
