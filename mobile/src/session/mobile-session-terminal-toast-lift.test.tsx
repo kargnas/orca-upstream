@@ -10,7 +10,11 @@ type Presentation = ReturnType<typeof useMobileSessionPresentation>
 
 const KEYBOARD_HEIGHT = 300
 
-function present(options: { resizeForKeyboard: boolean; showNativeChat: boolean }): Presentation {
+function present(options: {
+  resizeForKeyboard: boolean
+  showNativeChat: boolean
+  displayMode?: 'auto' | 'phone' | 'desktop'
+}): Presentation {
   const scope = {
     created: undefined,
     worktreeId: 'wt-1',
@@ -29,6 +33,8 @@ function present(options: { resizeForKeyboard: boolean; showNativeChat: boolean 
     terminalKeyboardResizeEnabled: options.resizeForKeyboard,
     showNativeChat: options.showNativeChat,
     terminalKeyboardMetrics: new Map(),
+    terminalModes:
+      options.displayMode === undefined ? new Map() : new Map([['term-1', options.displayMode]]),
     toastOpacityRef: { current: 1 },
     hostEndpoint: null,
     initialSessionAutoCreateRef: { current: null },
@@ -76,5 +82,17 @@ describe('toast lift while the Android keyboard is open', () => {
   it('keeps the full lift under native chat, which hides the dock', () => {
     const view = present({ resizeForKeyboard: true, showNativeChat: true })
     expect(liftOf(view.terminalToastAnimatedStyle)).toBe(KEYBOARD_HEIGHT)
+  })
+
+  it('keeps the lift when the desktop holds the dims, because the host will not resize the PTY', () => {
+    const view = present({ resizeForKeyboard: true, showNativeChat: false, displayMode: 'desktop' })
+    expect(view.activeTerminalKeyboardLift).not.toBe(0)
+    expect(liftOf(view.terminalToastAnimatedStyle)).toBe(KEYBOARD_HEIGHT)
+  })
+
+  it('still disables the lift while the phone drives at an explicit phone mode', () => {
+    const view = present({ resizeForKeyboard: true, showNativeChat: false, displayMode: 'phone' })
+    expect(view.activeTerminalKeyboardLift).toBe(0)
+    expect(liftOf(view.terminalToastAnimatedStyle)).toBe(0)
   })
 })

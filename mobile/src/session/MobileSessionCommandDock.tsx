@@ -69,6 +69,10 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
     terminalKeyboardResizeEnabled
   } = controller
   const accessoryBarKeepsKeyboard = useKeyboardPersistingTaps('always')
+  // Why: while the desktop holds this terminal's dims the host ignores the viewport resize, so
+  // padding the frame smaller there would only clip rows; the dock keeps sliding in that mode.
+  const keyboardResizeApplied =
+    terminalKeyboardResizeEnabled && isTerminalPhoneDisplayMode(activeHandle, terminalModes)
   return (
     !activeMarkdownTab &&
     !activeFileTab &&
@@ -78,8 +82,8 @@ export function MobileSessionCommandDock({ controller }: { controller: MobileSes
         style={[
           styles.commandDock,
           {
-            paddingBottom: insets.bottom + (terminalKeyboardResizeEnabled ? keyboardLift : 0),
-            transform: [{ translateY: terminalKeyboardResizeEnabled ? 0 : -keyboardLift }]
+            paddingBottom: insets.bottom + (keyboardResizeApplied ? keyboardLift : 0),
+            transform: [{ translateY: keyboardResizeApplied ? 0 : -keyboardLift }]
           }
         ]}
       >
