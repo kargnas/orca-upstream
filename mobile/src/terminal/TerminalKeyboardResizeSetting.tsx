@@ -10,6 +10,7 @@ import { terminalSettingsScreenStyles as styles } from './terminal-settings-scre
 export function TerminalKeyboardResizeSetting(): React.JSX.Element {
   const [enabled, setEnabled] = useState(false)
   const userToggledRef = useRef(false)
+  const toggleSeqRef = useRef(0)
 
   useEffect(() => {
     let stale = false
@@ -26,11 +27,18 @@ export function TerminalKeyboardResizeSetting(): React.JSX.Element {
 
   const toggle = useCallback((next: boolean) => {
     userToggledRef.current = true
+    const seq = ++toggleSeqRef.current
     setEnabled(next)
     void saveTerminalKeyboardResizeEnabled(next).catch(() => {
       // Why: a refused write must not leave the switch claiming a value the session will not
-      // load on return; the read-back lands the switch on what storage actually kept.
-      void loadTerminalKeyboardResizeEnabled().then(setEnabled)
+      // load on return; the read-back lands the switch on what storage actually kept. It applies
+      // only while this toggle is still the latest — a newer toggle owns the switch and resolves
+      // through its own save or read-back.
+      void loadTerminalKeyboardResizeEnabled().then((storedEnabled) => {
+        if (seq === toggleSeqRef.current) {
+          setEnabled(storedEnabled)
+        }
+      })
     })
   }, [])
 
