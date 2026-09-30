@@ -65,4 +65,14 @@ class TerminalKeyDispatchTrackerTest {
     assertTrue(tracker.onKeyUp(KeyEvent.KEYCODE_ESCAPE, ime))
     assertTrue(tracker.onKeyUp(KeyEvent.KEYCODE_ESCAPE, hw))
   }
+
+  @Test
+  fun aKeyUpFromADeviceWhoseDownWasNotTakenPasses() {
+    tracker.onChordTaken(KeyEvent.KEYCODE_ENTER, hw)
+    // The IME's plain press reached the field, so its key-up must reach it too — swallowing it
+    // would leave the field holding a down that never ends.
+    assertFalse(tracker.onKeyUp(KeyEvent.KEYCODE_ENTER, ime))
+    // The hardware press is still open; its own key-up is still consumed.
+    assertTrue(tracker.onKeyUp(KeyEvent.KEYCODE_ENTER, hw))
+  }
 }

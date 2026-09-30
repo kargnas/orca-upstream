@@ -38,16 +38,17 @@ internal class TerminalKeyDispatchTracker {
     repeatCount > 0 && pendingUps[keyCode]?.contains(deviceId) == true
 
   /**
-   * A key-up while this key code has pending presses ends a taken down and is swallowed: the
-   * field never saw the down it pairs with, so it must not see the up either.
+   * A key-up from a device with a pending press ends its taken down and is swallowed: the field
+   * never saw that down, so it must not see the up either. An up from a device with no record
+   * pairs with a down the field actually received and must reach it.
    */
   fun onKeyUp(keyCode: Int, deviceId: Int): Boolean {
     val devices = pendingUps[keyCode] ?: return false
-    devices.remove(deviceId)
+    val consumed = devices.remove(deviceId)
     if (devices.isEmpty()) {
       pendingUps.remove(keyCode)
     }
-    return true
+    return consumed
   }
 
   /** The view is gone; whatever presses were open end with it. */
