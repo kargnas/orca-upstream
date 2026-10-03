@@ -60,4 +60,17 @@ describe('terminal appearance before native splash dismissal', () => {
       warn.mockRestore()
     }
   })
+
+  it('dismisses the splash when the saved appearance never loads', async () => {
+    vi.useFakeTimers()
+    try {
+      const hide = vi.fn().mockResolvedValue(undefined)
+      const ready = startup(() => new Promise(() => undefined), hide)()
+      await vi.advanceTimersByTimeAsync(2000)
+      await ready
+      expect(hide).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

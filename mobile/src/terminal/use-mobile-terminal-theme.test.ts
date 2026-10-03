@@ -70,6 +70,7 @@ function paneProps(hostTheme = hostLight): ComponentProps<typeof TerminalPaneVie
     onSelectionEvicted: noop,
     onModesChanged: noop,
     onKeyboardAvoidanceMetrics: noop,
+    onCellBoxChange: noop,
     onHaptic: noop,
     onTerminalInput: noop,
     onTerminalQueryReply: noop,
