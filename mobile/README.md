@@ -9,7 +9,7 @@ Open the session's **⋯ → Terminal appearance** menu to choose Automatic (pho
 Light, or Match desktop. The selection is saved on the phone and immediately updates all
 open terminal panes, including hidden tabs, without restarting their sessions. Match desktop
 uses the colors published by the connected host. Automatic, Dark, and Light use Orca's
-shared default palettes in `src/shared/terminal-default-themes.ts`.
+shared default palettes in `src/shared/terminal-themes/defaults.ts`.
 
 Local development uses two processes:
 

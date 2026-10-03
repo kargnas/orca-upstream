@@ -190,8 +190,13 @@ export default function RootLayout() {
   // Previously the splash hid when a placeholder View rendered, leaving a
   // grey gap before the real screen appeared.
   const onNavigatorLayout = useCallback(async () => {
-    // Keep the native splash over the first render until the saved appearance has been published.
-    await loadMobileTerminalThemeMode().catch((error) => {
+    // Keep the native splash over the first render until the saved appearance has been published —
+    // bounded, because a storage read that stalls instead of rejecting would hold the splash for
+    // screens that never open a terminal.
+    await Promise.race([
+      loadMobileTerminalThemeMode(),
+      new Promise<null>((resolve) => setTimeout(resolve, 2000))
+    ]).catch((error) => {
       console.warn('Failed to load terminal appearance preference', error)
     })
     await SplashScreen.hideAsync()
