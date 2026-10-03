@@ -36,9 +36,7 @@ export const PAGE_STORAGE_EXACT_KEYS = [
   /** Whether the terminal's command inputs offer autocorrect. */
   'orca:terminalAutocompleteEnabled',
   /** Whether a terminal link opens in Orca's browser or the phone's. */
-  'orca:terminalLinkOpenMode',
-  /** The terminal appearance mode, which the session header's more-actions sheet writes. */
-  'orca:terminalThemeMode'
+  'orca:terminalLinkOpenMode'
 ] as const
 
 export const PAGE_STORAGE_KEY_PREFIXES = [

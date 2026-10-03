@@ -58,22 +58,20 @@ describe('terminal appearance inside the hybrid-shell session page', () => {
     warn.mockRestore()
   })
 
-  it('loads the appearance the page is handed in `init`', async () => {
+  it('follows the phone when the page is not handed the saved appearance', async () => {
     const preference = await openPage({ [KEY]: 'light' })
-    expect(await preference.loadMobileTerminalThemeMode()).toBe('light')
-  })
-
-  it('follows the phone when the page holds no saved appearance', async () => {
-    const preference = await openPage({})
     expect(await preference.loadMobileTerminalThemeMode()).toBe('system')
   })
 
-  it('persists a choice through the page bridge so it survives the next open', async () => {
+  it('applies a choice for the page lifetime and drops the write without rejecting', async () => {
     const preference = await openPage({})
     await preference.loadMobileTerminalThemeMode()
     await expect(preference.saveMobileTerminalThemeMode('light')).resolves.toBeUndefined()
     expect(preference.getMobileTerminalThemeMode()).toBe('light')
-    expect(posted).toEqual([{ key: KEY, value: 'light' }])
-    expect(warn).not.toHaveBeenCalled()
+    expect(posted).toEqual([])
+    expect(warn).toHaveBeenCalledWith('[page-bridge] storage-write-dropped', {
+      key: KEY,
+      refusal: 'not-allowed'
+    })
   })
 })
