@@ -1,9 +1,8 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ActionSheetModal } from '../components/ActionSheetModal'
 import { PickerModal } from '../components/PickerModal'
-import { terminalAppearanceI18n } from '../i18n/terminal-appearance'
 import { MobileSessionHeaderMoreActionsSheet } from './MobileSessionHeaderMoreActionsSheet'
 
 const state = vi.hoisted(() => ({
@@ -26,10 +25,6 @@ vi.mock('../storage/terminal-theme-preference', () => ({
 }))
 
 let renderer: ReactTestRenderer
-// Labels follow the device locale; pin English so assertions hold on any machine.
-beforeAll(async () => {
-  await terminalAppearanceI18n.changeLanguage('en')
-})
 afterEach(() => {
   act(() => renderer?.unmount())
   vi.clearAllMocks()

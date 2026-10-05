@@ -4,7 +4,6 @@ import { ListChecks, Palette } from 'lucide-react-native'
 import { MobileAgentSessionHistoryIcon } from '../agent-history/MobileAgentSessionHistoryIcon'
 import { ActionSheetModal } from '../components/ActionSheetModal'
 import { PickerModal } from '../components/PickerModal'
-import { terminalAppearanceText as t } from '../i18n/terminal-appearance'
 import {
   getMobileTerminalThemeMode,
   loadMobileTerminalThemeMode,
@@ -13,6 +12,18 @@ import {
   type MobileTerminalThemeMode
 } from '../storage/terminal-theme-preference'
 import { colors } from '../theme/mobile-theme'
+
+const APPEARANCE_TITLE = 'Terminal appearance'
+const MODE_LABELS: Record<MobileTerminalThemeMode, string> = {
+  system: 'Automatic (phone)',
+  dark: 'Dark',
+  light: 'Light',
+  desktop: 'Match desktop'
+}
+const MODE_HINTS: Partial<Record<MobileTerminalThemeMode, string>> = {
+  system: 'Follow your phone’s light or dark setting.',
+  desktop: 'Use the connected desktop’s terminal colors.'
+}
 
 type Props = {
   visible: boolean
@@ -41,7 +52,9 @@ export function MobileSessionHeaderMoreActionsSheet({
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     if (visible) {
-      void loadMobileTerminalThemeMode().catch(() => Alert.alert(t('title'), t('loadError')))
+      void loadMobileTerminalThemeMode().catch(() =>
+        Alert.alert(APPEARANCE_TITLE, 'Couldn’t load your saved terminal appearance.')
+      )
     }
   }, [visible])
 
@@ -51,8 +64,8 @@ export function MobileSessionHeaderMoreActionsSheet({
         visible={visible}
         actions={[
           {
-            label: t('title'),
-            hint: t(mode),
+            label: APPEARANCE_TITLE,
+            hint: MODE_LABELS[mode],
             icon: Palette,
             loading: saving,
             closeBeforePress: true,
@@ -61,8 +74,8 @@ export function MobileSessionHeaderMoreActionsSheet({
           ...(showAgentSessionHistory
             ? [
                 {
-                  label: t('history'),
-                  hint: t('historyHint'),
+                  label: 'Agent History',
+                  hint: 'Browse and resume agent sessions',
                   renderIcon: () => (
                     <MobileAgentSessionHistoryIcon
                       size={16}
@@ -77,8 +90,8 @@ export function MobileSessionHeaderMoreActionsSheet({
           ...(showChecks
             ? [
                 {
-                  label: t('checks'),
-                  hint: t('checksHint'),
+                  label: 'Checks',
+                  hint: 'Open pull request checks',
                   icon: ListChecks,
                   onPress: onOpenChecks
                 }
@@ -89,23 +102,23 @@ export function MobileSessionHeaderMoreActionsSheet({
       />
       <PickerModal<MobileTerminalThemeMode>
         visible={showThemePicker}
-        title={t('title')}
+        title={APPEARANCE_TITLE}
         selected={mode}
         options={(['system', 'dark', 'light', 'desktop'] as const).map((value) => ({
           value,
-          label: t(value),
-          subtitle:
-            value === 'system'
-              ? t('systemHint')
-              : value === 'desktop'
-                ? t('desktopHint')
-                : undefined,
+          label: MODE_LABELS[value],
+          subtitle: MODE_HINTS[value],
           disabled: saving
         }))}
         onSelect={(next) => {
           setSaving(true)
           void saveMobileTerminalThemeMode(next)
-            .catch(() => Alert.alert(t('title'), t('saveError')))
+            .catch(() =>
+              Alert.alert(
+                APPEARANCE_TITLE,
+                'Couldn’t save terminal appearance. Your selection applies until the app restarts.'
+              )
+            )
             .finally(() => setSaving(false))
         }}
         onClose={() => setShowThemePicker(false)}
