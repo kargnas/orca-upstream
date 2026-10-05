@@ -73,7 +73,8 @@ export function normalizeStatusDotPresentation(scope: TerminalDocumentScope, dat
 
 export function enqueueWrite(scope: TerminalDocumentScope, data: string) {
   const normalized = normalizeStatusDotPresentation(scope, data)
-  if (normalized.length <= TERMINAL_WRITE_SLICE_UNITS) {
+  // Why: a bridge frame can arrive without text; queue it as before, as the scans above tolerate it.
+  if (typeof normalized !== 'string' || normalized.length <= TERMINAL_WRITE_SLICE_UNITS) {
     scope.writeQueue.push(normalized)
     return
   }

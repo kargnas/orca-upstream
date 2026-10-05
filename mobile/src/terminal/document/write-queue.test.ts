@@ -212,6 +212,12 @@ describe('terminal WebView write queue', () => {
     expect(queue.writes.slice(1).join('')).toBe(`\u23fa\ufe0e ${large}`)
   })
 
+  it('queues a write frame that carries no text instead of throwing', () => {
+    const queue = createWriteQueue(WRITE_QUEUE_SOURCE)
+    expect(() => queue.enqueue(undefined)).not.toThrow()
+    expect(queue.snapshot().slots).toEqual([undefined])
+  })
+
   it('drains writes in FIFO order', () => {
     const queue = createWriteQueue(WRITE_QUEUE_SOURCE)
     queue.enqueue('a')
