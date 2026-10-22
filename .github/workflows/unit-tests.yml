@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       node_versions:
-        description: JSON array of Node.js major versions to test.
+        description: JSON array of Node.js versions to test.
         required: true
         type: string
 

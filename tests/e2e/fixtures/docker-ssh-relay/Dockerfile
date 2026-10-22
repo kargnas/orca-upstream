@@ -1,4 +1,4 @@
-FROM node:22-bookworm@sha256:5647be709086c696ff32edaaf1c70cd26d1da6ab2b39c32f3c7b4c4a31957e37
+FROM node:22.23.4-bookworm@sha256:63538dfe497cc29dfafdda25ada09b46db68a3f4cc205abf1f5d6bf0913f3384
 
 # Why: immutable snapshot inputs keep the SSH/Git fixture identical across rebuild dates.
 RUN sed -i \
