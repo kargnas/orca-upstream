@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readMirroredStorage } from './mirrored-storage-keys'
+import { pageStorageKeysForRoute } from '../mobile-web-shell/page-storage-keys'
 import {
   HOST_SIDEBAR_MAX_WIDTH,
   HOST_SIDEBAR_MIN_WIDTH,
@@ -418,10 +420,20 @@ describe('terminal keyboard resize preference', () => {
     vi.mocked(AsyncStorage.getItem).mockResolvedValue('false')
     await expect(loadTerminalKeyboardResizeEnabled()).resolves.toBe(false)
 
+    vi.mocked(AsyncStorage.getItem).mockImplementation(async (key) => stored.get(key) ?? null)
+    vi.mocked(AsyncStorage.setItem).mockImplementation(async (key, value) => {
+      stored.set(key, value)
+    })
     await saveTerminalKeyboardResizeEnabled(true)
+    expect(
+      readMirroredStorage(pageStorageKeysForRoute('host-1', '/h/host-1/session/wt-1'))
+    ).toMatchObject({ 'orca:terminalKeyboardResizeEnabled': 'true' })
     expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalKeyboardResizeEnabled', 'true')
 
     await saveTerminalKeyboardResizeEnabled(false)
+    expect(
+      readMirroredStorage(pageStorageKeysForRoute('host-1', '/h/host-1/session/wt-1'))
+    ).toMatchObject({ 'orca:terminalKeyboardResizeEnabled': 'false' })
     expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalKeyboardResizeEnabled', 'false')
   })
 })

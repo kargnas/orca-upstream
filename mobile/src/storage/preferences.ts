@@ -121,7 +121,7 @@ export async function loadTerminalKeyboardResizeEnabled(): Promise<boolean> {
 }
 
 export async function saveTerminalKeyboardResizeEnabled(enabled: boolean): Promise<void> {
-  await AsyncStorage.setItem(TERMINAL_KEYBOARD_RESIZE_KEY, String(enabled))
+  await persistMirrored(TERMINAL_KEYBOARD_RESIZE_KEY, String(enabled))
 }
 
 const TERMINAL_LIVE_INPUT_DISABLED_PREFIX = 'orca:terminalLiveInputDisabled:'
