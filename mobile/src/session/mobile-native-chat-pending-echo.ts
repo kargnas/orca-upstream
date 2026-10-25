@@ -1,17 +1,14 @@
-import { normalizeReconcileText } from './mobile-native-chat-draft-reconcile'
+import { normalizeNativeChatUserText as normalizeReconcileText } from '../../../src/shared/native-chat-image-transcript-markers'
 
 export type MobileNativeChatPendingMessage = {
   id: string
   text: string
   expectedOccurrence: number
-  /** Local preview URIs carried by the send for its optimistic echo. */
   images?: string[]
   baselineTailMessageId: string | null
-  /** Whether the transcript this baseline was captured from was already this
-   *  session's own history. A send issued mid-hydration is captured unresolved
-   *  and rebased onto the first authoritative read instead of reconciling
-   *  against rows that may belong to another tab. */
+  // Unresolved hydration may still show another tab’s rows; rebase onto this session’s first authoritative history before matching.
   baselineResolved: boolean
+  sentAt?: number
 }
 
 export type MobileNativeChatSendOrigin = {
@@ -22,6 +19,7 @@ export type MobileNativeChatSendOrigin = {
   baselineOccurrences: number
   baselineTailMessageId: string | null
   baselineResolved: boolean
+  sentAt: number
 }
 
 type PendingByKey = Record<string, MobileNativeChatPendingMessage[]>
@@ -46,7 +44,6 @@ export function appendMobileNativeChatPending(
   images?: string[]
 ): PendingByKey {
   const current = previous[key] ?? []
-  // Count outstanding repeats with the same normalized key.
   const earlierOutstanding = current.filter(
     (pending) =>
       normalizeReconcileText(pending.text) === origin.normalizedText &&
@@ -70,6 +67,7 @@ export function appendMobileNativeChatPending(
             : origin.baselineOccurrences + earlierOutstanding + 1,
         baselineTailMessageId: origin.baselineTailMessageId,
         baselineResolved: origin.baselineResolved,
+        sentAt: origin.sentAt,
         ...(images?.length ? { images } : {})
       }
     ]

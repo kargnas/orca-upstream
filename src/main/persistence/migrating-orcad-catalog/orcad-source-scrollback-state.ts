@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import type { OrcadMigrationTerminalScrollbackSnapshot } from '../../../shared/orcad-migration-scrollback'
+import type { OrcadMigrationTerminalScrollbackSnapshot } from '../../../shared/orcad-migration/orcad-migration-scrollback'
 import {
   MAX_ORCAD_MIGRATION_SCROLLBACK_SNAPSHOTS,
   MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES
-} from '../../../shared/orcad-migration-scrollback'
+} from '../../../shared/orcad-migration/orcad-migration-scrollback'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT } from '../../../shared/terminal-scrollback-limits'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
@@ -40,7 +40,7 @@ export function hasDuplicateOrcadMigrationScrollbackDescriptors(
 export function projectOrcadMigrationSessionScrollback(
   session: WorkspaceSessionState,
   storage?: TerminalScrollbackSnapshotStorage,
-  /** "Move anyway": a pane's history that can't move stays on this desktop; the pane still moves. */
+  /** "Move anyway" can retain untransferable history while moving its pane. */
   leaveBehind = false
 ): ProjectedOrcadMigrationScrollback {
   const projected = structuredClone(session)
@@ -50,13 +50,15 @@ export function projectOrcadMigrationSessionScrollback(
   let totalBytes = 0
   for (const [tabId, layout] of Object.entries(projected.terminalLayoutsByTabId ?? {})) {
     const sourceLayout = session.terminalLayoutsByTabId[tabId]
+    const localOnly = session.localOnlyScrollbackByTabId?.[tabId]
     const refs: Record<string, string> = {}
     const leafIds = new Set([
       ...Object.keys(sourceLayout.buffersByLeafId ?? {}),
+      ...Object.keys(localOnly ?? {}),
       ...Object.keys(sourceLayout.scrollbackRefsByLeafId ?? {})
     ])
     for (const leafId of [...leafIds].sort(compareKeys)) {
-      const buffer = sourceLayout.buffersByLeafId?.[leafId]
+      const buffer = inlineLeafBuffer(localOnly, sourceLayout.buffersByLeafId, leafId)
       const sourceRef = sourceLayout.scrollbackRefsByLeafId?.[leafId]
       const ref = buffer ? makeTerminalScrollbackSnapshotRef(tabId, leafId) : sourceRef
       const bytes = buffer
@@ -100,6 +102,8 @@ export function projectOrcadMigrationSessionScrollback(
       delete layout.scrollbackRefsByLeafId
     }
   }
+  // Route both inline stores through snapshots; a few large panes would overflow the manifest.
+  delete projected.localOnlyScrollbackByTabId
   if (
     snapshots.length > MAX_ORCAD_MIGRATION_SCROLLBACK_SNAPSHOTS ||
     totalBytes > MAX_ORCAD_MIGRATION_SCROLLBACK_TOTAL_BYTES
@@ -118,7 +122,7 @@ export function readOrcadMigrationSourceScrollbackChunk(args: {
   offset: number
   length: number
   storage?: TerminalScrollbackSnapshotStorage
-  /** Kept on disk for an export in flight, so a tab closed mid-transfer still reads from storage. */
+  /** Pending exports can read retained files even after their tabs close. */
   retained?: boolean
 }): { bytesBase64: string; totalBytes: number; eof: boolean } {
   const bytes = findSnapshotBytes(args.state, args.descriptor, args.storage, args.retained)
@@ -147,22 +151,35 @@ export function findSnapshotBytes(
     if (!layout) {
       continue
     }
-    const buffer = layout.buffersByLeafId?.[descriptor.leafId]
+    const buffer = inlineLeafBuffer(
+      session.localOnlyScrollbackByTabId?.[descriptor.tabId],
+      layout.buffersByLeafId,
+      descriptor.leafId
+    )
     const ref = layout.scrollbackRefsByLeafId?.[descriptor.leafId]
     const bytes = buffer
       ? Buffer.from(buffer, 'utf8')
       : ref === descriptor.ref
         ? readTerminalScrollbackStoredBytesSync(ref, storage)
         : null
-    if (matchesDescriptor(bytes, descriptor)) {
+    if (matchesOrcadMigrationSnapshotBytes(bytes, descriptor)) {
       return bytes
     }
   }
   const stored = retained ? readTerminalScrollbackStoredBytesSync(descriptor.ref, storage) : null
-  return matchesDescriptor(stored, descriptor) ? stored : null
+  return matchesOrcadMigrationSnapshotBytes(stored, descriptor) ? stored : null
 }
 
-function matchesDescriptor(
+/** Local-only wins, as in `resolveLeafScrollbackBuffers`: the ordinary park writes it last. */
+function inlineLeafBuffer(
+  localOnly: Record<string, string> | undefined,
+  shared: Record<string, string> | undefined,
+  leafId: string
+): string | undefined {
+  return localOnly?.[leafId] || shared?.[leafId] || undefined
+}
+
+export function matchesOrcadMigrationSnapshotBytes(
   bytes: Buffer | null,
   descriptor: OrcadMigrationTerminalScrollbackSnapshot
 ): bytes is Buffer {

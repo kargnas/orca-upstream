@@ -282,8 +282,7 @@ describe('startStructuredAgentLaunch', () => {
     const worktreeId = 'wt-draft-failed'
     const intent = launchIntent(worktreeId, 'failed-draft-session')
     mocks.createIntent.mockReturnValueOnce(intent)
-    // Why: every real non-refusal error ends as visibility-unknown, which keeps the seed for the
-    // retry; a known failure is the recovery layer rejecting with the outcome settled.
+    // Non-refusal failures remain visibility-unknown and keep retry seeds; known failures come from recovery’s settled outcome.
     vi.mocked(launchAndReconcile).mockRejectedValueOnce(new Error('boom'))
 
     const launch = startStructuredAgentLaunch(worktreeId, 'codex', {
@@ -341,7 +340,12 @@ describe('startStructuredAgentLaunch', () => {
     await flushLaunchSettlement()
 
     expect(mocks.launch).toHaveBeenCalledOnce()
-    expect(mocks.launch).toHaveBeenCalledWith(intent, expect.any(Function))
+    expect(mocks.launch).toHaveBeenCalledWith(
+      intent,
+      expect.any(Function),
+      false,
+      expect.any(Function)
+    )
     expect(toast.message).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })
@@ -367,12 +371,14 @@ describe('startStructuredAgentLaunch', () => {
       'claude',
       undefined,
       undefined,
+      undefined,
       undefined
     )
     expect(mocks.createIntent).toHaveBeenNthCalledWith(
       2,
       worktreeId,
       'codex',
+      undefined,
       undefined,
       undefined,
       undefined
@@ -515,7 +521,6 @@ describe('startStructuredAgentLaunch', () => {
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(worktreeId, intent.sessionId)
     ])
-    // Every send waits, so a second send of the repeated text would show up below.
     mocks.callRuntimeRpc.mockImplementation(
       () => new Promise((resolve) => pendingSends.push(resolve))
     )
@@ -572,7 +577,6 @@ describe('startStructuredAgentLaunch', () => {
     expect(mocks.createIntent).toHaveBeenCalledTimes(2)
     expect(second.sessionId).not.toBe(intent.sessionId)
     await expect(second.launchResult).rejects.toThrow('offline')
-    // Each start's text waits in its own chat's composer.
     expect(composerDraft(second.sessionId)).toBe('second prompt')
     expect(composerDraft(intent.sessionId)).toBe('first prompt')
   })
@@ -827,7 +831,6 @@ describe('startStructuredAgentLaunch', () => {
       delivered: false,
       failureNotified: true
     })
-    // The one staged text goes back to the chat's composer once.
     expect(composerDraft(intent.sessionId)).toBe('first prompt')
     expect(hasStagedStructuredLaunchPrompt(intent.sessionId)).toBe(false)
   })

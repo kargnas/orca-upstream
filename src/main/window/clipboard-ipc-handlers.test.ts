@@ -106,7 +106,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-vi.mock('../ipc/runtime-environment-transport-routing', () => ({
+vi.mock('../ipc/runtime-environments/runtime-environment-transport-routing', () => ({
   callRuntimeEnvironment: callRuntimeEnvironmentMock
 }))
 vi.mock('./dashboard-popout-window', () => ({ isDashboardPopoutRenderer: () => false }))
@@ -186,7 +186,7 @@ describe('registerClipboardHandlers', () => {
     fsMkdirMock.mockReset()
     fsMkdirMock.mockResolvedValue(undefined)
     fsOpendirMock.mockReset()
-    // Why: handler registration kicks off the expired-staging sweep; an empty temp root keeps it inert.
+    // Registration starts expired-staging cleanup; an empty temp root keeps it inert.
     fsOpendirMock.mockImplementation(async () => ({
       async *[Symbol.asyncIterator]() {},
       close: vi.fn().mockResolvedValue(undefined)

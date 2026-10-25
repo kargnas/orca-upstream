@@ -74,6 +74,7 @@ function structuredLaunchIntent(worktreeId: string, sessionId = 'codex-session-1
 
 const store = {
   clearNativeChatLaunchDraft: vi.fn(),
+  readLocalAgentInventory: () => ({ ids: null, state: 'pending' }),
   activeRepoId: 'repo-1',
   activeWorktreeId: 'wt-1',
   settings: {
@@ -105,6 +106,8 @@ const store = {
   allWorktrees: vi.fn(() => store.worktreesByRepo['repo-1']),
   tabsByWorktree: { 'wt-1': [{ id: 'tab-1' }] },
   unifiedTabsByWorktree: emptyUnifiedTabsByWorktree,
+  groupsByWorktree: {},
+  layoutByWorktree: {},
   activeGroupIdByWorktree: {},
   openFiles: [] as { id: string; worktreeId: string }[],
   browserTabsByWorktree: {} as Record<string, { id: string }[]>,
@@ -172,13 +175,12 @@ vi.mock('@/runtime/local-structured-session-owner', () => ({
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities,
   ensureLocalRuntimeCapabilities: async () => hostCapabilities,
-  // A launch made before the runtime answered hears back that it supports no structured chat.
   awaitLocalRuntimeCapabilities: () => ({ known: Promise.resolve([]), stop: () => {} })
 }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getExecutionHostIdForWorktree: () =>
     store.repos[0]?.connectionId ? `ssh:${store.repos[0].connectionId}` : 'local',
-  getRuntimeEnvironmentIdForWorktree: () => null
+  runtimeEnvironmentIdOrLocalUnlessTwin: () => null
 }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: (target: unknown, method: string, params: unknown) =>
@@ -187,8 +189,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
       : mockCallStructuredAgentSession(target, method, params)
 }))
 
-/** Structured adoption creates a terminal tab and flips it to chat once Codex is ready.
- *  The absence of an initial chat mode shows that the availability guard ran. */
+// No initial chat mode proves availability rejection preceded terminal-tab adoption.
 describe('structured chat adoption guard on the launch path', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -278,7 +279,6 @@ describe('structured chat adoption guard on the launch path', () => {
       worktreeId: 'wt-1'
     })
 
-    // This machine admits the chat before any of it opens, so the surface is its answer.
     expect(result).toMatchObject({
       surface: { kind: 'host-published' },
       pasteDraftAfterLaunch: false
@@ -294,17 +294,19 @@ describe('structured chat adoption guard on the launch path', () => {
       'codex',
       'local',
       undefined,
+      undefined,
       undefined
     )
     expect(mockLaunchStructuredCodexSession).toHaveBeenCalledWith(
       expect.objectContaining({ worktreeId: 'wt-1' }),
+      expect.any(Function),
+      false,
       expect.any(Function)
     )
     expect(mockCreateTab).not.toHaveBeenCalled()
     expect(mockWaitForAgentReady).not.toHaveBeenCalled()
   })
 
-  // Routing only: the host seeds the saved values, so preservation is pinned there.
   it('takes the structured path when a Codex model and effort are already saved', async () => {
     store.settings.nativeChatSessionOptions = {
       codex: {
@@ -327,6 +329,7 @@ describe('structured chat adoption guard on the launch path', () => {
       'codex',
       'local',
       undefined,
+      undefined,
       undefined
     )
     expect(mockCreateTab).not.toHaveBeenCalled()
@@ -348,13 +351,13 @@ describe('structured chat adoption guard on the launch path', () => {
       'claude',
       'local',
       undefined,
+      undefined,
       undefined
     )
     expect(mockCreateTab).not.toHaveBeenCalled()
   })
 
-  // A Claude account bound to WSL is one such "no". Before, the chat opened first and was left
-  // failed, with a Retry that failed the same way.
+  // WSL-bound Claude accounts must decline before opening a chat that could only fail Retry.
   it('opens the terminal, and no chat, when this machine declines the chat', async () => {
     store.unifiedTabsByWorktree = {}
     mockCreateSupport.mockResolvedValue({ supported: false, reason: 'wsl' })
@@ -379,7 +382,6 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(mockPasteDraftWhenAgentReady).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'start this task' })
     )
-    // Nothing of a chat was committed: no launch, intent, tab, or message about it.
     expect(mockCreateStructuredCodexSessionLaunchIntent).not.toHaveBeenCalled()
     expect(mockLaunchStructuredCodexSession).not.toHaveBeenCalled()
     expect(mockCreateUnifiedTab).not.toHaveBeenCalled()
@@ -414,8 +416,7 @@ describe('structured chat adoption guard on the launch path', () => {
     }
   )
 
-  /** The toggle is hidden under Terminal chat but its persisted value survives, so the launch
-   *  path must re-check the default view rather than trust a stale opt-in. */
+  // Recheck persisted opt-in against current default view; the hidden toggle can remain enabled under Terminal chat.
   it('ignores a stale structured opt-in while the default view is Terminal chat', async () => {
     store.settings.experimentalNativeChat = false
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
@@ -458,7 +459,6 @@ describe('structured chat adoption guard on the launch path', () => {
       error: refusal
     })
     expect(mockCreateTab).not.toHaveBeenCalled()
-    // The chat tab opened before the refusal; its Retry line says it, so no toast says it again.
     expect(store.unifiedTabsByWorktree['wt-1']).toContainEqual(
       expect.objectContaining({ contentType: 'agent-session', entityId: 'codex-session-1' })
     )
@@ -571,7 +571,6 @@ describe('structured chat adoption guard on the launch path', () => {
       .mockRejectedValueOnce(new Error('inventory unavailable'))
       .mockResolvedValueOnce([])
       .mockImplementationOnce(() => {
-        // The inventory refresh also publishes the host snapshot into the renderer projection.
         store.unifiedTabsByWorktree['wt-1'] = [
           {
             id: `structured-agent-session-${firstIntent.sessionId}`,
@@ -600,7 +599,6 @@ describe('structured chat adoption guard on the launch path', () => {
       sessionId: firstIntent.sessionId
     })
     expect(mockCreateTab).not.toHaveBeenCalled()
-    // Its open chat tab says the start could not be confirmed; no toast repeats it.
     expect(mockCreateUnifiedTab).toHaveBeenCalledWith(
       'wt-1',
       'agent-session',
@@ -619,7 +617,6 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(mockLaunchStructuredCodexSession.mock.calls[1]?.[0]).toBe(firstIntent)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    // A successful retry must release the reservation so a later launch can start normally.
     store.unifiedTabsByWorktree['wt-1'] = [
       {
         id: `structured-agent-session-${secondIntent.sessionId}`,

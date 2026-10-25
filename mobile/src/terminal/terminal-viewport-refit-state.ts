@@ -14,7 +14,6 @@ export type TerminalViewportRefitTargetState = {
   currentRunSeq: number
 }
 
-/** What the runtime did with the viewport: recorded it, and whether it re-fitted the PTY too. */
 export type TerminalViewportUpdateOutcome = { updated: boolean; applied: boolean }
 
 export function resolveTerminalUpdateViewportCapability(
@@ -26,8 +25,7 @@ export function resolveTerminalUpdateViewportCapability(
   return isMethodNotFoundRefusal(response) ? 'unsupported' : 'unknown'
 }
 
-// Why: defer height refits while typing unless the keyboard-resize option
-// explicitly makes the visible PTY grid follow those layout changes.
+// Defer typing-time refits unless keyboard resizing is enabled.
 export type TerminalFrameHeightRefitState = {
   frameHeight: number
   keyboardVisible: boolean
@@ -45,9 +43,7 @@ export function reduceTerminalFrameHeightRefit(
   resizeForKeyboard = false
 ): { state: TerminalFrameHeightRefitState; shouldRefit: boolean } {
   if (event.type === 'refit-committed') {
-    // Why: the debounced height refit is firing. The keyboard can reopen during
-    // the debounce window, so re-check here and re-defer rather than reflow the
-    // PTY mid-keystroke; it runs on the next keyboard close.
+    // Recheck when the debounce fires because the keyboard may have reopened.
     if (state.keyboardVisible && !resizeForKeyboard) {
       return { state: { ...state, pending: true }, shouldRefit: false }
     }

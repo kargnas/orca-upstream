@@ -101,9 +101,8 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
       state: this.state,
       env: this.env,
       isListening: () => this.server !== null,
-      applyEvent: (event, source, env, version) => {
+      applyEvent: (event, source, env, version) =>
         this.applyEvent(event, source, env, version, { checkPresence: false })
-      }
     })
   }
 
@@ -196,8 +195,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     this.lastEnvelopeMetaByPaneKey.clear()
   }
 
-  /** Request-driven replay: re-forwards each cached paneKey payload as a fresh notification. Forwards are
-   *  issued before the request handler returns, so the response trails all replayed notifications. */
+  // Emit cached replays before returning so the response follows every replay notification.
   replayCachedPayloadsForPanes(): number {
     const cachedSnapshot = new Map(this.state.lastStatusByPaneKey)
     const replayable = selectReplayableCachedPanes({
@@ -275,12 +273,9 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     })
   }
 
-  /** Test-only / diagnostics accessor. */
   getCoordinates(): { port: number; token: string; endpointFilePath: string } {
     return { port: this.port, token: this.token, endpointFilePath: this.endpointFilePath }
   }
-
-  // ─── Private ──────────────────────────────────────────────────────
 
   private applyEvent(
     incoming: AgentHookEventPayload,

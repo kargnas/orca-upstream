@@ -59,8 +59,7 @@ describe('repo slice runtime routing', () => {
   })
 
   it('keeps the repos array identity across a refetch that changes nothing', async () => {
-    // Why: main rebuilds nested records (hookSettings et al) per list and IPC clones them, so a
-    // production-shaped repo — not a scalar-only fixture — is what proves reconciliation works.
+    // IPC clones nested records; scalar-only fixtures cannot prove production reconciliation.
     const hydrated = (): Repo => ({
       ...localRepo,
       kind: 'git',
@@ -80,7 +79,7 @@ describe('repo slice runtime routing', () => {
 
     await store.getState().fetchRepos({ runtimeEnvironmentId: null })
 
-    // Why: identity-keyed renderer memos (repo lookup index, selectors) rebuild on a new array.
+    // New array identity rebuilds repo lookup memos and selectors.
     expect(store.getState().repos).toBe(reposRef)
     expect(store.getState().repos[0]).toBe(reposRef[0])
   })
@@ -589,7 +588,11 @@ describe('repo slice runtime routing', () => {
       repos: [{ ...remoteRepo, executionHostId: 'runtime:env-1' }]
     })
 
-    await expect(store.getState().moveProjectToGroup(remoteRepo.id, 'group-1')).resolves.toBe(true)
+    await expect(
+      store
+        .getState()
+        .moveProjectToGroup({ ...remoteRepo, executionHostId: 'runtime:env-1' }, 'group-1')
+    ).resolves.toBe(true)
 
     expect(store.getState().repos).toEqual([
       { ...remoteRepo, projectGroupId: 'group-1', executionHostId: 'runtime:env-1' }
@@ -597,7 +600,7 @@ describe('repo slice runtime routing', () => {
     expect(runtimeEnvironmentCall).toHaveBeenCalledWith({
       selector: 'env-1',
       method: 'projectGroup.moveProject',
-      params: { repo: remoteRepo.id, groupId: 'group-1', order: undefined },
+      params: { repo: remoteRepo.id, groupId: 'group-1', order: undefined, connectionId: null },
       timeoutMs: 15_000
     })
     expect(projectGroupsMoveProject).not.toHaveBeenCalled()

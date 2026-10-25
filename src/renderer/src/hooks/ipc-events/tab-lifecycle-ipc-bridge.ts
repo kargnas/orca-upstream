@@ -1,7 +1,8 @@
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { runtimeEnvironmentIdForWorkspaceOwner } from '@/lib/resolve-owner'
+import { warnAmbiguousOwnerOnce } from '@/lib/ambiguous-owner-warning'
 import { createWebRuntimeSessionTerminal } from '@/runtime/web-runtime-terminal-creation'
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session-environment'
 import { dispatchWorkspaceTabCommand } from '@/lib/workspace-tab-commands'
@@ -16,9 +17,6 @@ import {
 } from '@/lib/floating-workspace-guest-bridge'
 
 import { useAppStore } from '../../store'
-function getWorktreeRuntimeEnvironmentId(worktreeId: string | null | undefined): string | null {
-  return getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
-}
 
 export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
   unsubs.push(
@@ -32,8 +30,14 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
       if (!worktreeId) {
         return
       }
+      const owner = runtimeEnvironmentIdForWorkspaceOwner(store, { workspaceId: worktreeId })
+      if (owner.kind === 'ambiguous') {
+        // Why: a local tab here would start a shell on this computer for a workspace two hosts publish.
+        warnAmbiguousOwnerOnce(worktreeId, 'open a new terminal tab')
+        return
+      }
+      const environmentId = owner.environmentId
       void (async () => {
-        const environmentId = getWorktreeRuntimeEnvironmentId(worktreeId)
         const outcome = await createWebRuntimeSessionTerminal({
           worktreeId,
           environmentId,
@@ -64,9 +68,7 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
 
   unsubs.push(
     window.api.ui.onCloseFloatingItem(({ sourceId }) => {
-      // Main forwards the guest's browser *page* id; resolve it to the owning live floating
-      // browser workspace (the id space the panel closes by), then hand off to the mounted
-      // panel's own close closure (pin guard + reclaim intent). Stale id = no-op.
+      // Resolve main’s page ID to its floating browser workspace, then use the mounted panel’s pin/reclaim-aware close; stale IDs no-op.
       const workspaceId = resolveFloatingWorkspaceBrowserWorkspaceId(
         useAppStore.getState(),
         sourceId

@@ -1,15 +1,19 @@
 import type { MobileTerminalCreateOptions } from './mobile-terminal-renderer-create'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-session-contracts'
-import { OrcaRuntimeWithCreateTerminal } from './terminal-create'
+import { OrcaRuntimeWithFailedStartPanes } from './failed-start-pane'
 import type { WorktreeStartupLaunch } from '../../../../shared/worktree/launch-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import type { SleepingAgentLaunchConfig } from '../../../../shared/agent-session-resume'
+import type {
+  AgentProviderSessionMetadata,
+  SleepingAgentLaunchConfig
+} from '../../../../shared/agent-session-resume'
 import type { RuntimeNavigationTarget } from '../../../../shared/runtime-navigation'
 import type { RuntimeMobileSessionCreateTerminalResult } from '../../../../shared/runtime-types'
 import { navigationTargetsHost } from '../../../../shared/runtime-navigation'
 import { MOBILE_TERMINAL_CREATE_RESULT_TTL_MS } from '../../orca-runtime-core'
+import { seedResumeLaunchIdentity } from '../../../ipc/pty/pane/resume-launch-identity'
 
-export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRuntimeWithCreateTerminal {
+export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRuntimeWithFailedStartPanes {
   protected abstract runCreateMobileSessionTerminal(
     worktreeSelector: string,
     opts?: MobileTerminalCreateOptions
@@ -30,8 +34,10 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
     worktreeSelector: string,
     opts: {
       afterTabId?: string
+      sourceChatFork?: { sessionId: string }
       targetGroupId?: string
       command?: string
+      shellOverride?: string
       cwd?: string
       env?: Record<string, string>
       envToDelete?: string[]
@@ -39,6 +45,7 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
       agent?: TuiAgent
       agentPrompt?: string
       launchConfig?: SleepingAgentLaunchConfig
+      resumeProviderSession?: AgentProviderSessionMetadata
       launchAgent?: TuiAgent
       terminalImageViewerSupported?: boolean
       viewMode?: 'terminal' | 'chat'
@@ -60,19 +67,20 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
       activate: select && navigationTargetsHost(navigation)
     }
     const mutationId = opts.clientMutationId
+    const startRun = async (): Promise<RuntimeMobileSessionCreateTerminalResult> => {
+      const created = await this.runCreateMobileSessionTerminal(worktreeSelector, runOpts)
+      this.seedMobileResumeIdentity(created, opts)
+      return created
+    }
     let result: RuntimeMobileSessionCreateTerminalResult
     if (!mutationId) {
-      result = await this.runCreateMobileSessionTerminal(worktreeSelector, runOpts)
+      result = await startRun()
     } else {
-      // Why: idempotency is caller-owned; two paired devices may reuse the same mutation id without sharing a result.
+      // Idempotency belongs to the caller; paired devices may reuse mutation ids independently.
       const mutationKey = `${opts.clientNavigationId ?? 'local'}\0${worktreeSelector}\0${mutationId}`
-      // Why: a retried create (double-tap, reconnect replay) with the same
-      // idempotency key must return the in-flight operation instead of spawning a
-      // duplicate terminal. Successes are kept briefly so a retry whose response
-      // was lost in transit reuses the created terminal; failures are dropped
-      // immediately so a retry can start a fresh create.
+      // Join in-flight creates and briefly retain successes for lost-response retries; drop failures so a genuine retry can start fresh.
       const inflight = this.mobileTerminalCreateByMutationId.get(mutationKey)
-      const run = inflight ?? this.runCreateMobileSessionTerminal(worktreeSelector, runOpts)
+      const run = inflight ?? startRun()
       if (!inflight) {
         this.mobileTerminalCreateByMutationId.set(mutationKey, run)
         const drop = (): void => {
@@ -98,5 +106,29 @@ export abstract class OrcaRuntimeWithCreateMobileSessionTerminal extends OrcaRun
       )
     }
     return result
+  }
+
+  /** A client-typed resume (phone Session History) names its conversation before the agent does. */
+  private seedMobileResumeIdentity(
+    created: RuntimeMobileSessionCreateTerminalResult,
+    opts: { resumeProviderSession?: AgentProviderSessionMetadata; launchAgent?: TuiAgent }
+  ): void {
+    if (!opts.resumeProviderSession || !created.tab.terminal) {
+      return
+    }
+    const pty = this.getLivePtyForHandle(created.tab.terminal)?.pty
+    const paneKey = this.paneOfPty(pty).paneKey
+    // Why: an SSH pane's status rows belong to the relay on that host.
+    if (!pty || !paneKey || pty.connectionId) {
+      return
+    }
+    seedResumeLaunchIdentity({
+      paneKey,
+      launchAgent: opts.launchAgent,
+      resumeProviderSession: opts.resumeProviderSession,
+      worktreeId: pty.worktreeId,
+      // This resume owns the new pane from time zero; reconciled live retries must retain the agent's own report.
+      launchedAt: 0
+    })
   }
 }

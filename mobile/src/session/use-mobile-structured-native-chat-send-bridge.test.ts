@@ -13,7 +13,8 @@ const ORIGIN: MobileNativeChatSendOrigin = {
   normalizedText: 'command',
   baselineOccurrences: 0,
   baselineTailMessageId: null,
-  baselineResolved: true
+  baselineResolved: true,
+  sentAt: 0
 }
 
 describe('useMobileStructuredNativeChatSendBridge', () => {
@@ -52,7 +53,7 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
     renderer = null
   })
 
-  // The structured session draws, or holds, what the host took; the composer stays cleared.
+  // Accepted messages remain host-owned; keep the composer cleared.
   it.each(['accepted', 'unknown', 'queued'] as const)(
     'leaves a %s send of a command the active agent owns to the structured session',
     async (outcome) => {
@@ -62,6 +63,7 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
       await expect(sendWithOutcome('/review')).resolves.toBe(outcome)
 
       expect(sendStructured).toHaveBeenCalledWith('/review')
+      expect(clearDraftForSend).toHaveBeenCalledExactlyOnceWith(ORIGIN, '/review')
       expect(restoreRejectedDraft).not.toHaveBeenCalled()
     }
   )
