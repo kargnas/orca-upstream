@@ -1,5 +1,11 @@
 import type * as pty from 'node-pty'
 import { isBracketedPasteSafeShell } from '../../shared/startup-command-submission'
+import {
+  discardStagedStartupCommand,
+  stageStartupCommand,
+  startupStagingFailureNotice,
+  type StartupCommandStaging
+} from '../../shared/startup-command-staging'
 import { PtyStartupIngress, type PtyIngressEmission } from '../../shared/pty-startup-ingress'
 import { resolvePtyOwnerBackend } from '../../shared/pty-owner-backend'
 import { resolveProcessExitCause } from '../../shared/terminal-exit-cause'
@@ -33,7 +39,7 @@ import {
 import { createLocalPtyShellReadinessSession } from './local-pty-shell-readiness-session'
 import { destroyPtyProcess, createPtyPhysicalExit } from './local-pty-termination'
 import { writeStartupCommandWhenShellReady } from './local-pty-shell-ready-startup-command'
-import type { PtySpawnOptions, PtySpawnResult } from './types'
+import type { PtySpawnOptions, PtySpawnResult } from './pty-provider-contract'
 
 export function activateLocalPtySession(args: {
   id: string
@@ -54,7 +60,7 @@ export function activateLocalPtySession(args: {
   if (spawnedWslDistro !== undefined) {
     ptyWslDistroById.set(id, spawnedWslDistro)
   }
-  // Why both: launchAgent is explicit intent that survives command rewrites; recognition catches bare agent command lines.
+  // launchAgent survives command rewrites; recognition also catches typed agent commands.
   if (spawn.launchAgent || plan.startupAgentRecognition) {
     ptyAgentSessionIds.add(id)
   }
@@ -106,7 +112,6 @@ export function activateLocalPtySession(args: {
   })
   startupIngressByPty.set(id, startupIngress)
 
-  // Shell-ready startup command support
   const readiness = createLocalPtyShellReadinessSession({
     id,
     spawn,
@@ -125,11 +130,11 @@ export function activateLocalPtySession(args: {
   ptyDisposables.set(id, disposables)
 
   let exitedBeforeSpawnReply = false
+  let staging: StartupCommandStaging | undefined
   const onExitDisposable = proc.onExit(({ exitCode, signal }) => {
     exitedBeforeSpawnReply = true
-    // Why: node-pty reports a signalled death as {exitCode: 0, signal: N}; the
-    // cause is built here, where the signal and the spawn's trustworthiness
-    // are both still in hand.
+    discardStagedStartupCommand(staging)
+    // node-pty may pair exitCode 0 with a fatal signal; classify while signal and spawn provenance are available.
     const cause = resolveProcessExitCause({
       exitCode,
       signal,
@@ -145,7 +150,7 @@ export function activateLocalPtySession(args: {
     clearPtyState(id)
     startupIngress.drainAndClose()
     startupIngressByPty.delete(id)
-    // Why: release the master ptmx fd on natural exit, else a clean exit leaks the fd until GC. See docs/fix-pty-fd-leak.md.
+    // Release the natural-exit ptmx fd now instead of waiting for GC (docs/fix-pty-fd-leak.md).
     destroyPtyProcess(proc, { alreadyKilled: wasTerminationRequested })
     ptyReportsChildExitStatus.delete(id)
     getOptions().onExit?.(id, exitCode, incarnationId, cause)
@@ -178,10 +183,22 @@ export function activateLocalPtySession(args: {
         shellName: spawnedShellName,
         waitsForShellReady: plan.shellReadyLaunch?.supportsReadyMarker === true
       })
+    staging = stageStartupCommand({
+      command: spawn.command,
+      shellPath: plan.shellPath,
+      orcaBuiltLine: spawn.launchAgent !== undefined
+    })
+    const notice = startupStagingFailureNotice(staging)
+    if (notice) {
+      startupIngress.accept(notice)
+      console.warn(`[pty] Could not stage startup command for ${id}; typing it in full`, {
+        reason: staging.failure
+      })
+    }
     writeStartupCommandWhenShellReady(
       readiness.shellReadyPromise,
       proc,
-      spawn.command,
+      staging.command,
       (cleanup) => {
         readiness.setStartupCommandCleanup(cleanup)
       },
@@ -191,13 +208,14 @@ export function activateLocalPtySession(args: {
     )
   }
 
-  // Why: publish the OS pid for the memory collector; proc.pid can be briefly 0/undefined before node-pty sees the child.
+  // Memory collection needs a proven positive OS PID; node-pty can briefly publish zero during spawn.
   const rawPid = proc.pid
   const pid = typeof rawPid === 'number' && Number.isFinite(rawPid) && rawPid > 0 ? rawPid : null
   return {
     id,
     incarnationId,
     pid,
+    startupCwdSource: 'request',
     ...(exitedBeforeSpawnReply ? { exitedBeforeSpawnReply: true } : {}),
     ...(spawnedWslDistro !== undefined ? { wslDistro: spawnedWslDistro } : {})
   }

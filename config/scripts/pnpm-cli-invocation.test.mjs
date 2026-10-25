@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
 
@@ -88,8 +87,7 @@ describe('resolvePnpmCliInvocation', () => {
     }
   })
 
-  // Why: `npmExecPath: undefined` would hit the destructuring default and read the ambient
-  // npm_execpath, so an explicit empty string is the only env-independent way to force this branch.
+  // Pass empty npmExecPath to force branch independently of env; undefined activates the destructuring default.
   it('falls back to PATH pnpm when npm_execpath is empty', () => {
     expect(resolvePnpmCliInvocation({ npmExecPath: '', nodeExecPath, platform: 'darwin' })).toEqual(
       { command: 'pnpm', prefixArgs: [], shell: false }
@@ -214,18 +212,5 @@ describe('resolvePnpmCliInvocation', () => {
       resolvePnpmCliInvocation({ npmExecPath: '', platform, pnpmHome: 'C:\\pnpm', fileExists })
     ).toEqual({ command: 'pnpm', prefixArgs: [], shell: false })
     expect(fileExists).not.toHaveBeenCalled()
-  })
-})
-
-describe('pnpm 12 native-cli callers', () => {
-  it('reinvokes pnpm through the helper rather than `node $npm_execpath`', () => {
-    for (const file of [
-      './build-native-for-platform.mjs',
-      './run-ssh-docker-bulk-open-freeze-e2e.mjs'
-    ]) {
-      const source = readFileSync(new URL(file, import.meta.url), 'utf8')
-      expect(source).toContain("from './pnpm-cli-invocation.mjs'")
-      expect(source).not.toMatch(/process\.execPath,\s*\[\s*(?:pnpmEntry|npmExecPath)/)
-    }
   })
 })

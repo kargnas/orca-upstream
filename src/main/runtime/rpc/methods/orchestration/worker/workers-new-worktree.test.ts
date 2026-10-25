@@ -454,6 +454,24 @@ describe('orchestration new-worktree workers', () => {
     )
   })
 
+  // Composer and idle readiness paths must both record setup evidence; the composer path previously dropped it.
+  it('settles a fresh worker start on main’s idle wait, not the launch paste’s signal', async () => {
+    mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'running' })
+    const composerSignal = vi.spyOn(runtime, 'waitForFreshWorkerComposer')
+
+    const { result } = await startWorker()
+
+    expect(composerSignal).not.toHaveBeenCalled()
+    expect(runtime.waitForTerminal).toHaveBeenCalledWith(
+      'term_worker',
+      expect.objectContaining({ condition: 'tui-idle', launchReadiness: true })
+    )
+    expect(result).toMatchObject({
+      state: 'ready',
+      setup: { startupPolicy: 'wait-for-setup', state: 'succeeded' }
+    })
+  })
+
   it('does not inject task input when the gated setup terminal fails to start', async () => {
     mockCreatedWorktree({ startupPolicy: 'wait-for-setup', state: 'spawn_failed' })
     vi.mocked(runtime.waitForTerminal).mockResolvedValue({

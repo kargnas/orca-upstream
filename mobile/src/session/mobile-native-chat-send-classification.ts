@@ -1,22 +1,23 @@
-// Mobile counterpart of desktop's send classification gate
-// (src/renderer/src/components/native-chat/NativeChatComposer.tsx): slash/skill
-// sends are TUI control actions, not chat turns — they never echo as a user
-// bubble, because the transcript will never contain a matching user turn and
-// the optimistic echo would never reconcile.
+// Do not echo terminal slash/skill controls as chat turns: no transcript user row exists to reconcile their bubbles.
 
 import {
-  getNativeChatAgentProfile,
-  getVerifiedNativeChatCommands
+  getAgentAnsweredNativeChatCommands,
+  getNativeChatAgentProfile
 } from '../../../src/shared/native-chat-agent-profiles'
 import {
   classifyNativeChatSend,
-  type NativeChatSendClassification
+  type NativeChatSendClassification,
+  type SlashCommandSuggestion
 } from '../../../src/shared/native-chat-slash-commands'
 
 export type { NativeChatSendClassification }
 
-/** Classify a mobile chat send for the tab's agent. Mobile has no skill picker,
- *  so there is never a picker-origin token that reclassifies a `/token` as chat. */
+// Terminal mobile chat lacks desktop-owned command answers and reply rows.
+export function getMobileNativeChatCommands(agent: string): readonly SlashCommandSuggestion[] {
+  return getAgentAnsweredNativeChatCommands(agent)
+}
+
+// Terminal sends carry no picker-origin override that could reclassify a slash token as chat.
 export function classifyMobileNativeChatSend(
   agent: string | null,
   text: string
@@ -27,7 +28,7 @@ export function classifyMobileNativeChatSend(
   const profile = getNativeChatAgentProfile(agent)
   return classifyNativeChatSend(
     text,
-    getVerifiedNativeChatCommands(agent),
+    getMobileNativeChatCommands(agent),
     null,
     profile?.skillPrefix ?? null
   )

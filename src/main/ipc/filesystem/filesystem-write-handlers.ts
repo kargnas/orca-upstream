@@ -1,8 +1,8 @@
 import { ipcMain, shell } from 'electron'
-import { lstat, writeFile } from 'node:fs/promises'
+import { lstat } from 'node:fs/promises'
 import type { SshMutationExpectation } from '../../../shared/ssh-types'
-import { assertSshMutationExpectation } from '../../ssh/ssh-connection-generation'
-import { requireSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
+import { assertSshMutationExpectation } from '../../ssh/connection/ssh-connection-generation'
+import { SshHostNotServedError } from '../../providers/ssh-host-not-served-error'
 import { tryDeleteWslUncPath } from '../../wsl-unc-delete'
 import type { LocalFileAccess } from '../../../shared/local-file-access'
 import {
@@ -10,9 +10,14 @@ import {
   resolveLocalWriteRequestPath
 } from '../local-file-access-resolution'
 import { isENOENT } from '../filesystem-path-containment'
-import { registerFilesystemMutationHandlers } from '../filesystem-mutations'
+import { registerFilesystemMutationHandlers } from './filesystem-mutations'
+import { registerAgentSessionAttachmentUploadHandlers } from '../agent-session-attachment-upload-ipc'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
-import { assertLocalWriteTargetIsRegularFile } from './local-regular-file-read'
+import type {
+  FileWriteDiskPrecondition,
+  FileWriteResult
+} from '../../../shared/file-write-disk-precondition'
+import { writeLocalTextFileWithDiskPrecondition } from './local-disk-write-precondition'
 
 export function registerFilesystemWriteHandlers(context: FilesystemHandlerContext): void {
   const { store } = context
@@ -26,8 +31,9 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
         content: string
         connectionId?: string
         access?: LocalFileAccess
+        diskPrecondition?: FileWriteDiskPrecondition
       } & SshMutationExpectation
-    ): Promise<void> => {
+    ): Promise<FileWriteResult> => {
       assertSshMutationExpectation(
         args.connectionId,
         args.expectedSshTargetId,
@@ -35,8 +41,7 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
         args.expectedExecutionHostId
       )
       if (args.connectionId) {
-        const provider = requireSshFilesystemProvider(args.connectionId)
-        return provider.writeFile(args.filePath, args.content)
+        throw new SshHostNotServedError(args.connectionId)
       }
       const filePath = await resolveLocalWriteRequestPath(args.filePath, args.access, store)
       try {
@@ -49,8 +54,7 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
           throw error
         }
       }
-      await assertLocalWriteTargetIsRegularFile(filePath)
-      await writeFile(filePath, args.content, 'utf-8')
+      return writeLocalTextFileWithDiskPrecondition(filePath, args.content, args.diskPrecondition)
     }
   )
 
@@ -71,18 +75,17 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
         args.expectedExecutionHostId
       )
       if (args.connectionId) {
-        const provider = requireSshFilesystemProvider(args.connectionId)
-        return provider.deletePath(args.targetPath, args.recursive)
+        throw new SshHostNotServedError(args.connectionId)
       }
-      // Why: preserve the symlink so we delete the link, not its target (realpath would trash the real file, possibly outside all roots).
+      // Delete the symlink entry, not a realpath target that may be outside allowed roots.
       const targetPath = await resolveDesktopAuthorizedPath(args.targetPath, store, {
         preserveSymlink: true
       })
-      // Why: WSL UNC targets have no Recycle Bin (shell.trashItem throws), so hard-delete via `rm` inside the distro (issue #6415).
+      // WSL UNC has no Recycle Bin; hard-delete inside the distro (#6415).
       if (await tryDeleteWslUncPath(targetPath, { recursive: args.recursive })) {
         return
       }
-      // Why: swallow ENOENT so an external delete racing this UI delete stays idempotent (design §7.1).
+      // Concurrent external deletion must leave UI deletion idempotent.
       try {
         await shell.trashItem(targetPath)
       } catch (error) {
@@ -95,4 +98,5 @@ export function registerFilesystemWriteHandlers(context: FilesystemHandlerContex
   )
 
   registerFilesystemMutationHandlers(store)
+  registerAgentSessionAttachmentUploadHandlers()
 }

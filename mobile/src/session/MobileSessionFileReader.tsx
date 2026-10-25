@@ -1,3 +1,5 @@
+import { MobileFileMediaPreview } from '../files/MobileFileMediaPreview'
+import type { MobileFilePreviewRpcSender } from '../files/mobile-file-preview-operations'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   FlatList,
@@ -31,20 +33,32 @@ import type {
 } from './mobile-session-route-types'
 import { DiffLineRow } from './MobileSessionDiffLineRow'
 import { sendableMobileDiffComments } from './mobile-diff-comments'
+import { MobileLoadErrorState } from '../components/MobileLoadErrorState'
 
-export function FileReader({
+type FileReaderProps = {
+  doc: FileDocState | undefined
+  client?: MobileFilePreviewRpcSender | null
+  title: string
+  relativePath: string
+  documentId?: string
+  language?: string
+  diffCommentActions?: DiffCommentActions
+}
+
+export function FileReader(props: FileReaderProps) {
+  return (
+    <FileReaderDocument key={JSON.stringify([props.documentId, props.relativePath])} {...props} />
+  )
+}
+
+function FileReaderDocument({
   doc,
+  client = null,
   title,
   relativePath,
   language,
   diffCommentActions
-}: {
-  doc: FileDocState | undefined
-  title: string
-  relativePath: string
-  language?: string
-  diffCommentActions?: DiffCommentActions
-}) {
+}: FileReaderProps) {
   const syntaxLanguage = useMemo(
     () => resolveMobileSyntaxLanguage(relativePath || title, language),
     [language, relativePath, title]
@@ -145,9 +159,8 @@ export function FileReader({
       return undefined
     }
 
-    // Why: defer highlighting one tick so large files show as plain text immediately before colors are applied.
+    // Defer highlighting one tick so large files appear as plain text immediately.
     const timer = setTimeout(() => {
-      // file + html share the syntax-segment source view (html's "Source" toggle).
       if (doc.kind === 'file' || doc.kind === 'html') {
         setFileSyntax({
           doc,
@@ -163,7 +176,6 @@ export function FileReader({
           lines: highlightMobileDiffLines(doc.lines, syntaxLanguage)
         })
       }
-      // image: no syntax highlighting.
     }, 0)
 
     return () => clearTimeout(timer)
@@ -177,11 +189,7 @@ export function FileReader({
     )
   }
   if (doc.status === 'error') {
-    return (
-      <View style={styles.markdownState}>
-        <Text style={styles.markdownError}>{doc.message}</Text>
-      </View>
-    )
+    return <MobileLoadErrorState message={doc.message} />
   }
 
   if (doc.kind === 'diff') {
@@ -255,6 +263,9 @@ export function FileReader({
     )
   }
 
+  if (doc.kind === 'media') {
+    return <MobileFileMediaPreview media={doc.media} client={client} title={title} />
+  }
   if (doc.kind === 'image') {
     return (
       <View style={styles.imagePreviewContainer}>

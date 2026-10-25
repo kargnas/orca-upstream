@@ -220,7 +220,7 @@ describe('HeroFlow height', () => {
     await waitFor(() => expect(screen.getByText(/Creating a new pairing code/)).toBeVisible())
   })
 
-  it('does not offer a futile retry when Relay is unavailable on the desktop', () => {
+  it('offers Retry Relay when the desktop provider is missing, since a retry installs it', () => {
     renderFlow(1, {
       relayMintFailure: {
         code: 'relay_provider_unavailable',
@@ -231,8 +231,30 @@ describe('HeroFlow height', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Orca Relay isn’t available on this desktop'
     )
-    expect(screen.queryByRole('button', { name: 'Retry Relay' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry Relay' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Use LAN' })).toBeEnabled()
+  })
+
+  it('names a signed-out or unentitled desktop instead of offering a futile retry', () => {
+    renderFlow(1, {
+      relayMintFailure: {
+        code: 'relay_signed_out',
+        stage: 'create_pairing_relay',
+        message: 'Relay pairing invite request failed'
+      }
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Sign in again to use Orca Relay')
+    expect(screen.queryByRole('button', { name: 'Retry Relay' })).toBeNull()
+    cleanup()
+    renderFlow(1, {
+      relayMintFailure: {
+        code: 'relay_not_entitled',
+        stage: 'create_pairing_relay',
+        message: 'Relay pairing invite request failed'
+      }
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('isn’t included with this Orca account')
+    expect(screen.queryByRole('button', { name: 'Retry Relay' })).toBeNull()
   })
 
   it('hides the mint-failure notice when a Relay QR is shown', () => {
@@ -378,8 +400,6 @@ describe('HeroFlow height', () => {
     expect(field).toHaveAttribute('data-id', 'mobile-hero-machine-name')
     const qr = screen.getByRole('img', { name: 'Pairing QR' })
     expect(field.compareDocumentPosition(qr) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // Why: the field lives inside the copy cell, so the web client, where it renders nothing,
-    // leaves no empty grid track behind.
     expect(field.parentElement).toHaveClass('mp-pairing-copy')
     expect(field).toHaveClass('mp-pairing-machine')
   })
@@ -456,8 +476,6 @@ describe('HeroFlow height', () => {
     }
     render(<MobileHeroPairingStep {...props} />)
     expect(screen.getByText('Network')).toBeVisible()
-    // Why: a trigger here could not collapse the pinned-open row, so it would be
-    // a dead control advertising aria-expanded it does not own.
     expect(screen.queryByRole('button', { name: /Also use a faster local path/i })).toBeNull()
   })
 })

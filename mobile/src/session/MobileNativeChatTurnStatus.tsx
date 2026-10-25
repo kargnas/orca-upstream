@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { ChevronRight } from 'lucide-react-native'
 import {
-  formatNativeChatActiveTurnLabel,
   formatNativeChatTurnStatusLabel,
   NATIVE_CHAT_TURN_STATUS_COPY,
   nativeChatElapsedSeconds
@@ -10,8 +9,7 @@ import {
 import type { AgentTurnOutcome } from '../../../src/shared/agent-turn-outcome'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 
-/** Seconds tick only while a turn is actually counting, so a settled transcript
- *  holds no timers. */
+// Stop ticking settled turns so old transcripts retain no timers.
 function useElapsedSeconds(startedAt: number | null, counting: boolean): number {
   // Preserves the pre-stamp epoch for the frame before the turn's startedAt lands.
   const [mountedAt] = useState(() => Date.now())
@@ -27,10 +25,6 @@ function useElapsedSeconds(startedAt: number | null, counting: boolean): number 
   return counting ? nativeChatElapsedSeconds(startedAt, mountedAt, now) : 0
 }
 
-/** The turn bar under the user's message: "Working for 12s" while the turn runs,
- *  settling in place to a tappable "Worked for 3m 4s" ("Interrupted after" for a Stop,
- *  "Failed after" for a fault) that discloses the turn's tool activity. Desktop parity:
- *  `NativeChatWorkingStatus`. */
 export function MobileNativeChatTurnStatus({
   startedAt,
   workedSeconds,
@@ -40,7 +34,6 @@ export function MobileNativeChatTurnStatus({
 }: {
   startedAt: number | null
   workedSeconds?: number | null
-  /** How a settled turn ended; it picks the settled label. */
   verdict?: AgentTurnOutcome
   expanded?: boolean
   onToggleExpanded?: () => void
@@ -71,30 +64,6 @@ export function MobileNativeChatTurnStatus({
     <View style={[styles.row, styles.bar]}>
       <Text style={styles.label} numberOfLines={1}>
         {label}
-      </Text>
-    </View>
-  )
-}
-
-/** The live turn's tail line: a spinner beside what the provider says it is doing,
- *  else "Thinking", else "Working…". The clock stays in the turn bar. Desktop
- *  parity: `NativeChatTurnActivityLine`. */
-export function MobileNativeChatTurnActivity({
-  thinking,
-  activityText
-}: {
-  thinking: boolean
-  activityText?: string | null
-}): React.JSX.Element {
-  return (
-    <View
-      style={styles.row}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={NATIVE_CHAT_TURN_STATUS_COPY.responding}
-    >
-      <ActivityIndicator size="small" color={colors.textMuted} />
-      <Text style={styles.label} numberOfLines={1}>
-        {formatNativeChatActiveTurnLabel({ activityText, thinking })}
       </Text>
     </View>
   )

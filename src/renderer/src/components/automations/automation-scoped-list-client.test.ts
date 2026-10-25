@@ -11,11 +11,7 @@ const getRuntimeEnvironmentStatus = vi.fn()
 
 vi.mock('@/runtime/runtime-rpc-client', () => ({
   callRuntimeRpc: (...args: unknown[]) => callRuntimeRpc(...args),
-  getRuntimeEnvironmentStatus: (...args: unknown[]) => getRuntimeEnvironmentStatus(...args),
-  // Why: the real matcher is exercised in runtime-rpc-result's own tests; here it only needs to be honest about the tail token.
-  hasRuntimeRpcErrorCode: (error: unknown, code: string) =>
-    typeof (error as { message?: unknown })?.message === 'string' &&
-    (error as { message: string }).message.trimEnd().endsWith(`: ${code}`)
+  getRuntimeEnvironmentStatus: (...args: unknown[]) => getRuntimeEnvironmentStatus(...args)
 }))
 
 const DESKTOP = { kind: 'desktop' } as const
@@ -165,8 +161,7 @@ describe('capability probe dedupe', () => {
     await listScopedAutomations(RUNTIME, { kind: 'orphan' })
     // A different capability confirmed by the same status answer is also cached.
     await updateAutomationForOwner(SSH_OWNER, 'a1', { enabled: false })
-    // Mutations intentionally re-probe: owner fencing must not trust a positive
-    // answer after an in-place runtime replacement under the same pairing.
+    // Mutations re-probe because in-place runtime replacement can invalidate capabilities under the same pairing.
     expect(getRuntimeEnvironmentStatus).toHaveBeenCalledTimes(2)
   })
 
@@ -191,8 +186,7 @@ describe('capability probe dedupe', () => {
     expect(getRuntimeEnvironmentStatus).toHaveBeenCalledTimes(2)
   })
 
-  // The fence depends on this: a server downgraded in place ignores
-  // `expectedOwner`, so a confirmation must not outlive its observation window.
+  // Capability confirmations expire because downgraded servers may ignore expectedOwner.
   it('re-asks once a confirmation ages out', async () => {
     vi.useFakeTimers()
     try {
@@ -303,9 +297,7 @@ describe('owner-fenced mutations', () => {
   })
 })
 
-// The orphan arm used to live in the caller with its own transport choice and no
-// capability probe. These pin it to the owned arm's behaviour so the two cannot
-// drift apart again.
+// Share orphan and owned transport/probe behavior rather than maintaining a separate unfenced orphan arm.
 describe('orphan-fenced mutations', () => {
   it('fences on the orphan precondition over the same runtime transport', async () => {
     const { deleteOrphanAutomation } = await client()
@@ -366,8 +358,7 @@ describe('orphan-fenced mutations', () => {
     expect(getRuntimeEnvironmentStatus).not.toHaveBeenCalled()
   })
 
-  // History is the one action an orphan keeps (ORPHAN_ACTIONS), so it must reach
-  // the transport rather than resolving as "no host to run on".
+  // Orphans retain history without an execution host; the read must still reach transport.
   it('reads an orphan run history over the runtime transport', async () => {
     const { listOrphanAutomationRuns } = await client()
     callRuntimeRpc.mockResolvedValue({ runs: [{ id: 'r1' }] })
@@ -393,8 +384,7 @@ describe('orphan-fenced mutations', () => {
     )
   })
 
-  // Read-only, so it deliberately takes the owned read's probe behaviour — which
-  // today is no probe. Pinned so the two arms cannot diverge silently.
+  // Keep orphan and owned read-only history arms equally unprobed.
   it('probes on the orphan history read exactly as often as the owned read does', async () => {
     const { listAutomationRunsForOwner, listOrphanAutomationRuns } = await client()
     callRuntimeRpc.mockResolvedValue({ runs: [] })

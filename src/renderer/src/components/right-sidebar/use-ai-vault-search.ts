@@ -133,7 +133,10 @@ export function useAiVaultSearch(
   }
 }
 
-/** Under `all` every hit names its own host; a single-host answer belongs to the host we addressed. */
+// Answers that a retry from this client cannot change; `not-ready` can, so it keeps searching.
+const TITLE_ONLY_UNAVAILABLE_REASONS = new Set<string>(['disabled', 'no-service'])
+
+// All-host hits name their host; single-host responses belong to the addressed host.
 function hitExecutionHostId(hit: AiVaultSearchHit, host: ExecutionHostId | null): ExecutionHostId {
   return host ?? parseExecutionHostId(hit.executionHostId)?.id ?? LOCAL_EXECUTION_HOST_ID
 }
@@ -155,16 +158,17 @@ export function useAiVaultPanelSearch(
   const hasQuery = trimmed.length > 0
   const needsLocalConsent =
     executionHostScope === 'local' && !isWebClientLocation() && !policy.enabled
-  // Until indexing is on the box is still the legacy title filter, not index search.
-  const searching = hasQuery && !needsLocalConsent
-  // `within` is memoized by the caller; a fresh object per render would restart
-  // the search on every render and never let one settle.
+  // A client cannot enable another host’s index; fall back to title filtering when it reports search off (#22453).
+  const [titleOnlyScope, setTitleOnlyScope] = useState<ExecutionHostScope | null>(null)
+  const titleOnly =
+    scope !== null && scope !== ALL_EXECUTION_HOSTS_SCOPE && titleOnlyScope === scope
+  const searching = hasQuery && !needsLocalConsent && !titleOnly
+  // Callers must memoize within; new objects restart the search before it can settle.
   const request = useMemo(
     () =>
       searching && scope && agents.length > 0
         ? {
             query: trimmed,
-            // Relevance is the host's own default, so only the other order travels.
             filters: { agents: [...agents], ...(sort === 'relevance' ? {} : { sort }) },
             ...(within ? { within } : {})
           }
@@ -172,6 +176,14 @@ export function useAiVaultPanelSearch(
     [searching, scope, agents, trimmed, within, sort]
   )
   const search = useAiVaultSearch(request, scope, JSON.stringify(policy))
+  const hostSearchOff =
+    search.response?.kind === 'unavailable' &&
+    TITLE_ONLY_UNAVAILABLE_REASONS.has(search.response.reason)
+  useEffect(() => {
+    if (hostSearchOff && scope !== ALL_EXECUTION_HOSTS_SCOPE) {
+      setTitleOnlyScope(scope)
+    }
+  }, [hostSearchOff, scope])
   const sessions = useMemo(
     () => search.hits.map((hit) => aiVaultSearchHitToSession(hit, hitExecutionHostId(hit, host))),
     [search.hits, host]
@@ -193,6 +205,7 @@ export function useAiVaultPanelSearch(
     searching,
     hasQuery,
     needsLocalConsent,
+    titleOnly: hasQuery && titleOnly,
     host,
     resetKey: JSON.stringify([scope, request])
   }
