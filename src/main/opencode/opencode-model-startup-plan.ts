@@ -1,11 +1,19 @@
 import type { AgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
-import { buildAgentDraftLaunchPlan, buildAgentStartupPlan } from '../../shared/tui-agent-startup'
+import {
+  buildAgentDraftLaunchPlan,
+  buildAgentStartupPlan,
+  type AgentStartupPlan
+} from '../../shared/tui-agent-startup'
+import { planStartupWithPromptCandidate } from '../../shared/startup-line-prompt-carry'
 import { buildSleepingAgentLaunchConfig } from '../../shared/sleeping-agent-launch-config'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { probeOpenCodeLaunchModelContext } from './opencode-launch-model-context'
 import { resolveOpenCodeLaunchModelConfig } from './opencode-launch-model-config'
-import { isVerifiedOpenCodeLegacyModelVersion } from './opencode-model-version-policy'
+import {
+  isVerifiedOpenCodeConfigModelVersion,
+  isVerifiedOpenCodeLegacyModelVersion
+} from './opencode-model-version-policy'
 import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import { applyManagedDataAccountEnvironment } from '../managed-data-accounts/launch-environment'
 import { OrchestrationError } from '../runtime/orchestration/orchestration-error'
@@ -87,7 +95,7 @@ export async function prepareOpenCodeModelStartupInputs(
     }
     return { inputs }
   }
-  if (capabilities?.version !== '2.0.16' || inputs.agentArgs?.trim()) {
+  if (!isVerifiedOpenCodeConfigModelVersion(capabilities?.version) || inputs.agentArgs?.trim()) {
     refuseModel()
   }
   const before = await probeOpenCodeLaunchModelContext({
@@ -160,6 +168,21 @@ export async function buildExecutionHostAgentStartupPlan(
     plan.sessionOptions = { ...options.inputs.sessionOptions }
   }
   return plan
+}
+
+export async function planExecutionHostStartupWithPromptCandidate(
+  options: StartupScope & {
+    prompt: string
+    host: { shellName?: string; provesAgentInFront: boolean }
+  }
+): Promise<{ plan: AgentStartupPlan | null; promptCarried: boolean }> {
+  const prepared = await prepareOpenCodeModelStartupInputs(options)
+  const offered = planStartupWithPromptCandidate(prepared.inputs, options.prompt, options.host)
+  if (offered.plan && prepared.launchConfig) {
+    offered.plan.launchConfig = prepared.launchConfig
+    offered.plan.sessionOptions = { ...options.inputs.sessionOptions }
+  }
+  return offered
 }
 
 export function assertOpenCodeModelLaunchPreferencesAbsent(

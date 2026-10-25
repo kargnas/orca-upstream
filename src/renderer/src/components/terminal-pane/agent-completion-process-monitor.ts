@@ -100,15 +100,13 @@ export function createAgentCompletionProcessMonitor({
     enqueueAgentProcessInspection({
       priority,
       canRun: () => !state.disposed,
-      // Local reads all resolve out of one process-table capture; remote ones each cost their
-      // own execution-host round trip and stay admitted one at a time.
+      // Local reads share one capture; remote reads consume separate host round trips.
       sharesHostObservation: options.isRemotePtyId?.(ptyId) !== true,
       run: async () => {
         let inspectedRecognizedAgent = false
         let inspectionSucceeded = false
         try {
-          // Only a cadence tick on a local pane reads nothing but the name; every other read
-          // (pending-title, remote) needs the full capture and must not ask for the cheap one.
+          // Only local cadence reads may omit evidence; pending-title and remote decisions require the full capture.
           const inspectOptions = {
             ...(expectedIncarnationIdAtRequest
               ? { expectedIncarnationId: expectedIncarnationIdAtRequest }
@@ -118,8 +116,8 @@ export function createAgentCompletionProcessMonitor({
               : {})
           }
           const result = await (Object.keys(inspectOptions).length > 0
-            ? options.inspectProcess(options.getSettings(), ptyId, inspectOptions)
-            : options.inspectProcess(options.getSettings(), ptyId))
+            ? options.inspectProcess(ptyId, inspectOptions)
+            : options.inspectProcess(ptyId))
           if (
             !state.disposed &&
             generationAtRequest === state.inspectionGeneration &&

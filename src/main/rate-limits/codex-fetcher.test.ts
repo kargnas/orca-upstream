@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as RunProcess from '../../shared/child-process/run-process'
+import type * as RunProcess from '@orca/process-host'
 
 const {
   childSpawnMock,
@@ -19,12 +19,18 @@ const {
   startBackfillRecoveryMock: vi.fn(() => Promise.resolve(null))
 }))
 
+// Keep child-process assertions in this suite; worker transport is covered separately.
+vi.mock(
+  '../worker-thread-child-process/worker-thread-child-process',
+  () =>
+    import('../worker-thread-child-process/worker-thread-child-process-in-process.test-fixtures')
+)
 vi.mock('node:child_process', () => ({
   spawn: childSpawnMock
 }))
 
-// The chokepoint is the seam: assertions see what the fetcher asked for, before shim resolution.
-vi.mock('../../shared/child-process/run-process', async (importOriginal) => ({
+// Observe spawn requests before npm-shim resolution.
+vi.mock('@orca/process-host', async (importOriginal) => ({
   ...(await importOriginal<typeof RunProcess>()),
   spawnProcess: (spec: { program: string; args?: readonly string[] }) =>
     childSpawnMock(spec.program, spec.args ?? [], spec)
@@ -38,6 +44,9 @@ vi.mock('../codex-cli/command', () => ({
   resolveCodexCommand: resolveCodexCommandMock
 }))
 
+vi.mock('../wsl-interop-spawn-directory', () => ({
+  resolveWslInteropSpawnCwd: () => 'C:\\Windows'
+}))
 vi.mock('node-pty', () => ({
   spawn: ptySpawnMock
 }))
@@ -50,8 +59,7 @@ vi.mock('../codex/codex-state-db-backfill-recovery', () => ({
   startCodexStateDbBackfillRecoveryInBackground: startBackfillRecoveryMock
 }))
 
-// Default to signed-in so the spawn paths under test still run; the auth gate
-// itself is covered by codex-auth-presence.test.ts and the no-auth case below.
+// Assume signed-in for spawn tests; codex-auth-presence.test.ts covers gating.
 vi.mock('./codex-auth-presence', () => ({
   probeCodexAuthPresence: vi.fn(() => 'present')
 }))
@@ -70,8 +78,7 @@ function makeRpcChild() {
   }
   child.stdout = new EventEmitter()
   child.stderr = new EventEmitter()
-  // Why: like the real app-server, the fake dies on stdin EOF or a signal —
-  // the graceful shutdown path resolves only once the child reports exit.
+  // Graceful shutdown must wait for EOF/signal to produce exit, as real app-server does.
   const exitNow = (): void => {
     child.exitCode = 0
     child.emit('exit', 0, null)
@@ -115,7 +122,7 @@ function mockBackendUsage(): void {
   readFileMock.mockResolvedValue(
     JSON.stringify({ tokens: { access_token: 'access-token', account_id: 'account-id' } })
   )
-  // A Response body reads once; usage and reset credits each fetch.
+  // Response bodies are single-use; usage and credit reset need separate fixtures.
   vi.mocked(fetch).mockImplementation(
     async () =>
       new Response(
@@ -320,7 +327,7 @@ describe('fetchCodexRateLimits', () => {
     childSpawnMock.mockReturnValue(rpcChild)
 
     const resultPromise = fetchCodexRateLimits()
-    // Why: without an initialize response only the 30s boot deadline fires.
+    // No initialize response means only the boot deadline can settle this request.
     await vi.advanceTimersByTimeAsync(30_000)
 
     await expect(resultPromise).resolves.toMatchObject({
@@ -672,7 +679,7 @@ describe('fetchCodexRateLimits', () => {
       expect(shellCommand).not.toContain('wsl-codex-path')
       expect(spawnOptions).toEqual(
         expect.objectContaining({
-          cwd: expect.stringContaining('rate-limit-pty-cwd'),
+          cwd: 'C:\\Windows',
           env: expect.not.objectContaining({ CODEX_HOME: expect.anything() })
         })
       )

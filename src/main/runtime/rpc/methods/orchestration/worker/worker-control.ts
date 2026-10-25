@@ -13,8 +13,9 @@ import {
 import { readArchivedWorkerOutput } from './worker-archive-read'
 import { readStructuredWorkerOutput } from '../../orchestration-structured-worker-lifecycle'
 import { releaseStructuredWorkerSession } from '../../orchestration-structured-worker-session'
+import { sessionIdFromStructuredWorkerIncarnation } from '../../../../structured-worker-identity'
 import { readExactWorkerOutput } from './worker-output'
-import { exposeWorkerTerminalResource } from './worker-release-completion'
+import { exposeWorkerTerminalResource } from './worker-terminal-resource-presentation'
 import { readFederatedWorkerOutput } from '../federation/federated-worker-read'
 import { showFederatedWorker } from '../federation/federated-worker-show'
 import {
@@ -25,6 +26,7 @@ import {
 export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
   defineMethod({
     name: 'orchestration.workerShow',
+    permission: 'workspace',
     params: WorkerDispatchParams,
     handler: async (params, { runtime }) => {
       const db = runtime.getOrchestrationDb()
@@ -78,6 +80,7 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
   }),
   defineMethod({
     name: 'orchestration.workerRead',
+    permission: 'workspace',
     params: WorkerReadParams,
     handler: async (params, { runtime }) => {
       const db = runtime.getOrchestrationDb()
@@ -143,15 +146,13 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
           `Worker Dispatch ${params.dispatch} no longer resolves to its exact process.`
         )
       }
-      // Read via the handle inspectWorkerTerminal proved live: the durable one, or a handle
-      // re-minted from the recorded incarnation after the durable handle went stale.
+      // Read through the handle inspectWorkerTerminal proved live, including incarnation-fenced remints.
       const liveHandle = observation.terminalHandle ?? terminalHandle
       const structured = await readStructuredWorkerOutput({
         db,
         dispatchId: params.dispatch,
         workerState: worker?.state ?? 'unsupervised',
-        // Reused, never re-derived: being able to read the journal proves the host is installed,
-        // not that the provider child is alive.
+        // Reuse observation: reading a journal proves host installation, never provider-child liveness.
         liveness:
           observation.status === 'live' || observation.status === 'exited'
             ? observation.status
@@ -198,9 +199,11 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
   }),
   defineMethod({
     name: 'orchestration.workerAbandon',
+    permission: 'workspace',
     params: WorkerDispatchParams,
     handler: (params, { runtime, orchestrationCaller }) => {
-      const abandoned = runtime.getOrchestrationDb().abandonWorkerDispatch(
+      const db = runtime.getOrchestrationDb()
+      const abandoned = db.abandonWorkerDispatch(
         params.dispatch,
         runtime.getRuntimeId(),
         // Why: only a session caller is verified; terminal env could name anyone.
@@ -208,8 +211,7 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
       )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {
-          // Abandon settles the Dispatch, so it owes the same binding release stop and release do:
-          // a surviving redrive subscription keeps nudging a worker nobody is waiting on.
+          // Abandon must release redrive like stop/release, or an unowned session keeps receiving nudges.
           releaseStructuredWorkerSession(params.dispatch, runtime)
           runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
         }
@@ -225,7 +227,14 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
       }
       const worker = abandoned.worker
       if (abandoned.disposition === 'abandoned') {
-        releaseStructuredWorkerSession(params.dispatch, runtime)
+        // Only the worker's own Dispatch settles the worker; a side task's parked mail stays.
+        releaseStructuredWorkerSession(
+          params.dispatch,
+          runtime,
+          sessionIdFromStructuredWorkerIncarnation(
+            db.getDispatchContextById(params.dispatch)?.process_incarnation
+          )
+        )
         runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
       }
       return {

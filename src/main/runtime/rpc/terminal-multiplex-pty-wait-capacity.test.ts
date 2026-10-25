@@ -192,7 +192,7 @@ describe('terminal multiplex RPC', () => {
     await vi.waitFor(() =>
       expect(waitSignal?.aborted || readTerminal.mock.calls.length > 0).toBe(true)
     )
-    // Why: a closed pane must not become a hidden live-output consumer when its late PTY appears.
+    // Closed panes must not become hidden output consumers when their late PTY appears.
     expect(waitSignal?.aborted).toBe(true)
     expect(readTerminal).not.toHaveBeenCalled()
     expect(subscribeToTerminalData).not.toHaveBeenCalled()
@@ -355,7 +355,7 @@ describe('terminal multiplex RPC', () => {
     expect(viewSubscriberCount).toBe(0)
   })
 
-  it('reserves PTY wait capacity independently from active streams', async () => {
+  it('queues PTY waits past the running cap independently from active streams', async () => {
     const activeStreamCount = 44
     const waitSignals: AbortSignal[] = []
     const resolveWaits: ((ptyId: string) => void)[] = []
@@ -419,32 +419,28 @@ describe('terminal multiplex RPC', () => {
     await vi.waitFor(() =>
       expect(waitSignals).toHaveLength(TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION)
     )
-    const rejectedStreamId =
-      activeStreamCount + TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION + 1
-    await vi.waitFor(() => {
-      const results = harness.messages.map((message) => JSON.parse(message).result)
-      expect(results).toContainEqual({
-        type: 'error',
-        streamId: rejectedStreamId,
-        message: 'terminal_stream_limit_exceeded'
-      })
-      expect(results).toContainEqual({ type: 'end', streamId: rejectedStreamId })
-    })
+    // Queue beyond the running cap instead of failing restore (STA-2886).
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(waitSignals).toHaveLength(TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION)
 
+    resolveWaits[0]?.('pty-pending-1')
+    await vi.waitFor(() =>
+      expect(waitSignals).toHaveLength(TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION + 1)
+    )
     for (const [index, resolve] of resolveWaits.entries()) {
       resolve(`pty-pending-${index + 1}`)
     }
     await vi.waitFor(() => {
       const results = harness.messages.map((message) => JSON.parse(message).result)
       expect(results.filter((result) => result?.type === 'subscribed')).toHaveLength(
-        activeStreamCount + TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION
+        activeStreamCount + TERMINAL_MULTIPLEX_MAX_PENDING_PTY_WAITS_PER_CONNECTION + 1
       )
       expect(
         results.filter(
           (result) =>
             result?.type === 'error' && result.message === 'terminal_stream_limit_exceeded'
         )
-      ).toHaveLength(1)
+      ).toHaveLength(0)
     })
 
     harness.registry.cleanupSubscription('terminal-multiplex:conn-desktop-first-paint')
@@ -592,8 +588,7 @@ describe('terminal multiplex RPC', () => {
       { connectionId: 'conn-desktop-legacy' }
     )
     await dispatchPromise
-    // Widened gate: a desktop client must mount + await its late PTY, not skip
-    // straight to the bare scrollback path the way it did under the mobile-only gate.
+    // Desktop must also mount and await late PTYs; the old mobile-only gate skipped to bare scrollback.
     expect(runtime.requestRendererTerminalTabMount).toHaveBeenCalledWith('terminal-1')
     expect(runtime.waitForLeafPtyId).toHaveBeenCalledWith(
       'terminal-1',

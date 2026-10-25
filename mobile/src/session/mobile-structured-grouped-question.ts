@@ -5,13 +5,7 @@ import {
 } from '../../../src/shared/agent-session-question-answer'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 
-/**
- * Claude's AskUserQuestion can carry several questions, or one multi-select question, in a single
- * prompt. The host then leaves the flat `question.options` EMPTY and puts the real content in
- * `questions`, so a client that reads only the flat shape renders an unanswerable card and the turn
- * stalls. The phone has room for one question at a time, so the group is answered as steps and
- * submitted once as one set of answers.
- */
+// Grouped prompts put content in questions and leave flat options empty; collect steps locally and submit the whole answer set once.
 export type GroupedQuestionDraft = {
   /** Identifies the exact prompt revision these answers belong to; a revised prompt discards them. */
   promptKey: string
@@ -92,7 +86,6 @@ function decodeGroupedFreeTextAnswer(value: string): {
   }
 }
 
-/** Answers already collected for this exact prompt revision; a stale draft counts as none. */
 function answersFor(
   draft: GroupedQuestionDraft | null,
   promptKey: string
@@ -100,7 +93,6 @@ function answersFor(
   return draft && draft.promptKey === promptKey ? draft.answers : []
 }
 
-/** The step to show now, or null once every question has an answer. */
 export function projectGroupedQuestion(
   questions: readonly AgentJournalQuestion[],
   draft: GroupedQuestionDraft | null,
@@ -122,6 +114,7 @@ export function projectGroupedQuestion(
     ...(optionDescriptions.some(Boolean) ? { optionDescriptions } : {}),
     multiSelect: question.multiSelect,
     allowOther: Boolean(question.freeTextQuestionId),
+    ...(question.freeTextInput ? { freeTextInput: question.freeTextInput } : {}),
     optionTokens: question.options.map((option) =>
       encodeGroupedToken({
         kind: 'option',
@@ -142,7 +135,6 @@ export function projectGroupedQuestion(
   }
 }
 
-/** Read one step's answer out of what the question card sent back. */
 function answerFromResponse(
   response: string,
   question: AgentJournalQuestion,
@@ -155,11 +147,12 @@ function answerFromResponse(
     const trimmed = part.trim()
     const freeText = decodeGroupedFreeTextAnswer(trimmed)
     if (freeText) {
-      const answer = freeText.answer.trim()
+      const allowEmpty = question.freeTextInput?.allowEmpty === true
+      const answer = allowEmpty ? freeText.answer : freeText.answer.trim()
       if (
         freeText.promptKey !== promptKey ||
         freeText.questionId !== question.id ||
-        answer.length === 0 ||
+        (answer.length === 0 && !allowEmpty) ||
         other !== undefined
       ) {
         return null
@@ -182,20 +175,16 @@ function answerFromResponse(
   if (optionIds.some((optionId) => !offered.has(optionId))) {
     return null
   }
-  if (other && !question.freeTextQuestionId) {
+  if (other !== undefined && !question.freeTextQuestionId) {
     return null
   }
-  const answerCount = optionIds.length + (other ? 1 : 0)
+  const answerCount = optionIds.length + (other !== undefined ? 1 : 0)
   if (answerCount === 0 || (!question.multiSelect && answerCount !== 1)) {
     return null
   }
-  return { questionId: question.id, optionIds, ...(other ? { other } : {}) }
+  return { questionId: question.id, optionIds, ...(other !== undefined ? { other } : {}) }
 }
 
-/**
- * Fold one answer into the draft. Returns `advance` while questions remain and `submit` with the
- * whole group once the last one lands; null when the response does not answer this prompt step.
- */
 export function advanceGroupedQuestion(args: {
   response: string
   questions: readonly AgentJournalQuestion[]
@@ -215,7 +204,7 @@ export function advanceGroupedQuestion(args: {
   if (answers.length < args.questions.length) {
     return { kind: 'advance', draft: { promptKey: args.promptKey, answers } }
   }
-  // Never send a group the host would refuse — the user would see a silent failure with no way back.
+  // Validate before submission so an unanswerable refusal cannot strand the group.
   return isValidAgentSessionQuestionAnswers(args.questions, answers)
     ? { kind: 'submit', answers }
     : null

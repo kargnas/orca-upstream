@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelGenerateCommitMessageLocal,
   cancelGeneratePullRequestFieldsLocal,
@@ -34,13 +34,24 @@ const spawnMock = vi.mocked(spawn)
 
 const expectChildTerminated = createChildTerminationExpectation(terminateWindowsProcessTreeMock)
 
+// Fake Windows direct-child/taskkill paths here; source-control-local-process.test.ts covers supervised POSIX stop and managed-home lock release.
+const hostPlatform = process.platform
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: hostPlatform })
+  vi.unstubAllEnvs()
+})
+
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+  // Clear PATH so host agent installations cannot answer the fake Windows binary lookup.
+  vi.stubEnv('PATH', '')
   terminateWindowsProcessTreeMock.mockClear()
   terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
   spawnMock.mockClear()
 })
 
-describe('generateCommitMessageFromContext', () => {
+describe('generateCommitMessageFromContext on the Windows direct-child path', () => {
   it('fails clearly before spawning when a jcode argv prompt exceeds the Windows command line', async () => {
     await withPlatform('win32', async () => {
       const pending = generateCommitMessageFromContext(
@@ -74,8 +85,7 @@ describe('generateCommitMessageFromContext', () => {
         {
           branch: 'main',
           stagedSummary: 'M\tREADME.md',
-          // Why past 120 KiB and not the Windows 30k: Linux fails on ONE argument
-          // over MAX_ARG_STRLEN, which is far larger than the Windows line budget.
+          // Exceed Linux's per-argument MAX_ARG_STRLEN, not merely Windows' smaller total command budget.
           stagedPatch: `+${'x'.repeat(140_000)}`
         },
         { agentId: 'jcode', model: 'default' },
@@ -92,8 +102,7 @@ describe('generateCommitMessageFromContext', () => {
 
   it('still spawns on Linux for a prompt that only Windows would refuse', async () => {
     await withPlatform('linux', async () => {
-      // 40k chars trips the Windows line budget but is far under the Linux per-arg cap,
-      // so the guard must not have become a lowest-common-denominator limit.
+      // Stay below Linux argument capacity while exceeding Windows line budget; do not impose one platform's minimum on all.
       await generateCommitMessageFromContext(
         {
           branch: 'main',
@@ -446,8 +455,7 @@ describe('generateCommitMessageFromContext', () => {
     await expect(first).resolves.toMatchObject({ canceled: true })
     await expectChildTerminated(firstChild)
 
-    // SIGKILL reaches the codex process but not a grandchild that inherited its
-    // stdout, so 'exit' arrives and 'close' never does.
+    // A grandchild retains stdout after root exit, so close never arrives.
     firstChild.emit('exit', null, 'SIGKILL')
 
     const second = generateCommitMessageFromContext(context, params, {

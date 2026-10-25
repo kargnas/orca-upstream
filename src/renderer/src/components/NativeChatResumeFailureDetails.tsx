@@ -8,11 +8,7 @@ import {
 } from './native-chat-resume-failure-guidance'
 import type { ResumeFailure } from './native-chat-resume-on-restart-grouping'
 
-/**
- * What a failed row adds to an ordinary offered row: one status icon whose tooltip carries the
- * status and the host's reason, a dismiss control, and a "To resume" line with the button that does
- * it. Retry is offered only where a retry can succeed.
- */
+/** Keep unconfirmed outcomes distinct from refusals; offer Retry only where it can succeed. */
 
 function actionLabel(action: ResumeFailureAction): string {
   return action === 'open'
@@ -66,7 +62,7 @@ export function ResumeFailureStatus({
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={6} className="max-w-72">
           {status}
-          {/* The code verbatim, so it can be quoted in a report. */}
+          {/* Show the exact reportable code; lost-request codes are local and their underlying error stays in renderer logs. */}
           <span className="mt-0.5 block font-mono text-[10px] opacity-75">{failure.reason}</span>
         </TooltipContent>
       </Tooltip>
@@ -98,7 +94,7 @@ export function ResumeFailureGuidanceLine({
 }): React.JSX.Element {
   const guidance = resumeFailureGuidance(failure)
   return (
-    <div className="ml-6 mb-1 flex items-center gap-2 rounded-md border border-status-warning-border bg-status-warning-background px-2 py-1.5 text-[11px]">
+    <div className="mb-1 flex items-center gap-2 rounded-md border border-status-warning-border bg-status-warning-background px-2 py-1.5 text-[11px]">
       <span className="min-w-0 flex-1">
         <span className="font-semibold">
           {translate('auto.components.NativeChatResumeOutcomeRow.toResume', 'To resume:')}
