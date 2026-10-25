@@ -186,7 +186,7 @@ describe('TerminalWebView engine errors', () => {
         ref: terminalRef,
         onWebReady
       })
-      const webView = renderer.root.findByType('WebView')
+      const webView = findByHostType(renderer.root, 'WebView')
 
       act(() => {
         webView.props.onLoadEnd()
@@ -211,7 +211,7 @@ describe('TerminalWebView engine errors', () => {
     vi.useFakeTimers()
     try {
       const { onEngineError, renderer } = createTerminalWebViewRenderer()
-      const webView = renderer.root.findByType('WebView')
+      const webView = findByHostType(renderer.root, 'WebView')
 
       act(() => {
         webView.props.onLoadEnd()
@@ -236,7 +236,7 @@ describe('TerminalWebView engine errors', () => {
     try {
       const onWebReady = vi.fn()
       const { onEngineError, renderer } = createTerminalWebViewRenderer(vi.fn(), { onWebReady })
-      const webView = renderer.root.findByType('WebView')
+      const webView = findByHostType(renderer.root, 'WebView')
 
       postWebViewMessage(renderer, { type: 'web-ready' })
       // A repeated web-ready means a new document, so the parent must hear it to resubscribe.
@@ -267,7 +267,7 @@ describe('TerminalWebView engine errors', () => {
     const terminalRef = createRef<TerminalWebViewHandle>()
     const onWebReady = vi.fn()
     const { renderer } = createTerminalWebViewRenderer(vi.fn(), { ref: terminalRef, onWebReady })
-    const webView = renderer.root.findByType('WebView')
+    const webView = findByHostType(renderer.root, 'WebView')
 
     act(() => {
       webView.props.onLoadEnd()
